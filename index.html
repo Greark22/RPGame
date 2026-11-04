@@ -137,11 +137,11 @@ import {getDatabase,ref,get,set,update,push,remove,onValue,onChildAdded,onDiscon
 
 /* ====== COLE AQUI A CONFIGURAÇÃO DO SEU PROJETO FIREBASE ====== */
 const cfg={
-  apiKey:"AIzaSyANEYfQYZJQwz5Vhl08DGQa4xOv9CnkKJU",
-  authDomain:"rpgame-44db9.firebaseapp.com",
-  databaseURL:"https://rpgame-44db9-default-rtdb.firebaseio.com",
-  projectId:"rpgame-44db9",
-  appId:"1:895635506100:web:8fe3730c0744a56377e8e1"
+  apiKey:"COLE_AQUI",
+  authDomain:"SEU-PROJETO.firebaseapp.com",
+  databaseURL:"https://SEU-PROJETO-default-rtdb.firebaseio.com",
+  projectId:"SEU-PROJETO",
+  appId:"COLE_AQUI"
 };
 /* =============================================================== */
 
@@ -186,19 +186,21 @@ $('file').onchange=async e=>{
 };
 const authMsg=e=>({'auth/email-already-in-use':'Esse nome já está em uso.','auth/invalid-credential':'Nome ou senha incorretos.','auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.','auth/network-request-failed':'Sem conexão. Tente novamente.','auth/operation-not-allowed':'Ative o login por E-mail/Senha no Firebase.'}[e.code]||'Erro: '+(e.code||e.message));
 $('go').onclick=async()=>{
-  const name=$('un').value.trim(),pw=$('pw').value,s=slug(name);
-  if(!s){$('aerr').textContent='Digite um nome com letras ou números.';return}
+  const name=$('un').value.trim(),pw=$('pw').value;
+  if(!name){$('aerr').textContent='Digite seu nome de usuário.';return}
   if(!pw){$('aerr').textContent='Digite a senha.';return}
   $('go').disabled=true;$('aerr').textContent='';
   try{
-    const email=s+'@mesadados.app';
+    const key=name.toLowerCase();
+    const email=(await sha('u:'+key)).slice(0,40)+'@mesadados.app';
+    const fpw=await sha('p:'+key+':'+pw);
     if(mode==='new'){
       registering=true;
-      const c=await createUserWithEmailAndPassword(auth,email,pw);
+      const c=await createUserWithEmailAndPassword(auth,email,fpw);
       prof={name:name.slice(0,20),photo};
       await set(ref(db,'users/'+c.user.uid),prof);
       registering=false;await start(c.user);
-    }else await signInWithEmailAndPassword(auth,email,pw);
+    }else await signInWithEmailAndPassword(auth,email,fpw);
   }catch(e){registering=false;$('aerr').textContent=authMsg(e)}
   $('go').disabled=false;
 };
