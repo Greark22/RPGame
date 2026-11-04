@@ -63,6 +63,30 @@ button:disabled{opacity:.45;cursor:default}
 .sum b{font-size:1.35rem}
 .sum .mx b{color:var(--acc)}
 .empty{color:var(--mut)}
+
+/* ---------- palco da rolagem ---------- */
+#stage{position:fixed;inset:0;z-index:50;background:rgba(8,10,14,.86);display:flex;padding:20px;overflow:auto;cursor:pointer;animation:fadein .25s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.stagein{margin:auto;width:100%;max-width:920px;text-align:center;color:#fff}
+.sh{font-size:1.3rem;font-weight:700;margin-bottom:16px;letter-spacing:-.02em}
+.tiles{display:flex;flex-wrap:wrap;justify-content:center;gap:16px 14px}
+.dt{--w:clamp(104px,28vw,170px);margin:0;width:var(--w)}
+.face{position:relative;width:var(--w);height:var(--w);border-radius:16px;overflow:hidden;background:var(--bg0)}
+.face img{position:absolute;inset:0;width:100%;height:100%;display:block;animation:rolar var(--dur,1.8s) cubic-bezier(.15,.75,.25,1) both}
+@keyframes rolar{
+  0%{transform:translateY(-70%) scale(.5) rotate(0)}
+  55%{transform:translateY(0) scale(1.1) rotate(calc(var(--t)*.8))}
+  75%{transform:translateY(-7%) scale(1.03) rotate(calc(var(--t)*.93))}
+  100%{transform:translateY(0) scale(1) rotate(var(--t))}
+}
+.num{position:absolute;left:0;right:0;top:var(--ny,50%);transform:translateY(-50%) scale(.3);text-align:center;font-weight:700;line-height:1;
+  font-size:calc(var(--w)*.3);color:color-mix(in srgb,var(--c) 52%,#000);opacity:0;pointer-events:none;letter-spacing:-.04em}
+.num.l3{font-size:calc(var(--w)*.22)}
+.done .num{opacity:1;transform:translateY(-50%) scale(1);transition:opacity .2s ease,transform .45s cubic-bezier(.2,1.6,.4,1)}
+.dt figcaption{margin-top:8px;font-size:.9rem;color:#d1d5db}
+.dt figcaption b{color:#fff}
+.hint{margin-top:18px;font-size:.85rem;color:#9ca3af;min-height:1.2em}
+@media(prefers-reduced-motion:reduce){.face img{animation:none}}
 </style>
 </head>
 <body>
@@ -129,6 +153,10 @@ button:disabled{opacity:.45;cursor:default}
     </div>
   </section>
 </main>
+
+<div id="stage" class="hide" role="dialog" aria-live="polite" aria-label="Resultado da rolagem">
+  <div class="stagein"><div class="sh" id="sh"></div><div class="tiles" id="tiles"></div><div class="hint" id="hint"></div></div>
+</div>
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -233,10 +261,13 @@ async function joinRoom(code,pw){
   try{await set(mr,{name:prof.name,photo:prof.photo||'',proof})}
   catch(e){if(meta.locked)$('pwbox').classList.remove('hide');throw meta.locked?'Senha incorreta.':'Não foi possível entrar na sala.'}
   onDisconnect(mr).remove();
-  room={code,mr,members:{},unsubs:[]};
+  room={code,mr,members:{},unsubs:[],live:false};
   $('rtitle').textContent=String(meta.title||code).slice(0,40)+(meta.locked?' 🔒':'');
   room.unsubs.push(onValue(ref(db,`rooms/${code}/members`),s=>{room.members=s.val()||{};renderMembers()}));
-  room.unsubs.push(onChildAdded(query(ref(db,`rooms/${code}/rolls`),limitToLast(50)),s=>addRoll(s.val())));
+  const rq=query(ref(db,`rooms/${code}/rolls`),limitToLast(50));
+  room.unsubs.push(onChildAdded(rq,s=>addRoll(s.val())));
+  /* o evento "value" chega depois do histórico: a partir dele, rolagens são novas e ganham animação */
+  onValue(rq,()=>{if(room&&room.code===code)room.live=true},{onlyOnce:true});
   show('room');
 }
 $('create').onclick=async()=>{
@@ -261,7 +292,7 @@ $('join').onclick=async()=>{
 };
 async function leave(){
   if(!room)return;
-  const r=room;room=null;r.unsubs.forEach(f=>f());
+  const r=room;room=null;queue.length=0;if(!$('stage').classList.contains('hide'))closeStage();r.unsubs.forEach(f=>f());
   try{await onDisconnect(r.mr).cancel();await remove(r.mr)}catch(e){}
   $('feed').querySelectorAll('.roll').forEach(n=>n.remove());$('none').classList.remove('hide');
   if(uid)show('home');
@@ -310,6 +341,10 @@ $('roll').onclick=()=>{
 };
 function addRoll(e){
   if(!e||typeof e!=='object'||!e.res)return;
+  if(room&&room.live){queue.push(e);if(!playing)next()}
+  else feedRoll(e);
+}
+function feedRoll(e){
   $('none').classList.add('hide');
   const box=document.createElement('div');box.className='roll';
   const m=room&&room.members[e.uid];
@@ -331,6 +366,59 @@ function addRoll(e){
   const f=$('feed');f.prepend(box);
   while(f.querySelectorAll('.roll').length>50)f.querySelector('.roll:last-of-type').remove();
 }
+
+/* ---------- animação da rolagem ---------- */
+const BG0={4:'#833a32',6:'#845a1a',8:'#296447',10:'#196360',12:'#2b4987',20:'#4c3b84',100:'#7b3055'};
+const NUMY={4:'57%'};
+const REDUCE=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const queue=[];let playing=false,cur=null,autoT=null;
+function next(){
+  const e=queue.shift();
+  if(!e){playing=false;return}
+  playing=true;
+  const types=DICE.filter(s=>e.res['d'+s]).map(s=>{
+    const a=Object.values(e.res['d'+s]).map(Number);
+    return{s,n:a.length,total:a.reduce((x,y)=>x+y,0),max:Math.max(...a)};
+  });
+  const tiles=$('tiles');tiles.textContent='';
+  $('sh').textContent=String(e.name||'?').slice(0,20)+' rolou';
+  $('hint').textContent='';
+  let pending=0;
+  cur={e,done:false};
+  const reveal=f=>{f.classList.add('done');if(--pending<=0)finish(true)};
+  types.forEach(t=>[['Total',t.total],['Maior',t.max]].forEach(([lab,val])=>{
+    const fig=document.createElement('figure');fig.className='dt';
+    fig.style.setProperty('--c',COL[t.s]);fig.style.setProperty('--bg0',BG0[t.s]);
+    const face=document.createElement('div');face.className='face';
+    if(NUMY[t.s])face.style.setProperty('--ny',NUMY[t.s]);
+    const img=document.createElement('img');img.src='d'+t.s+'.gif';img.alt='d'+t.s;
+    const dir=Math.random()<.5?-1:1;
+    img.style.setProperty('--t',dir*(2+Math.floor(Math.random()*3))*360+'deg');
+    img.style.setProperty('--dur',(1.5+Math.random()*.9).toFixed(2)+'s');
+    const num=document.createElement('span');num.className='num'+(String(val).length>2?' l3':'');num.textContent=val;
+    face.append(img,num);
+    const cap=document.createElement('figcaption');
+    cap.innerHTML=lab==='Total'?'<b></b> · Total':'<b></b> · Maior';
+    cap.querySelector('b').textContent=t.n+'d'+t.s;
+    fig.append(face,cap);tiles.appendChild(fig);
+    pending++;
+    if(REDUCE)setTimeout(()=>reveal(face),150);
+    else img.addEventListener('animationend',()=>reveal(face),{once:true});
+  }));
+  $('stage').classList.remove('hide');
+}
+function finish(showHint){
+  if(!cur||cur.done)return;
+  cur.done=true;feedRoll(cur.e);
+  if(showHint){$('hint').textContent='Toque para fechar';autoT=setTimeout(closeStage,7000)}
+}
+function closeStage(){
+  clearTimeout(autoT);finish(false);cur=null;
+  $('stage').classList.add('hide');
+  setTimeout(next,250);
+}
+$('stage').onclick=closeStage;
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!$('stage').classList.contains('hide'))closeStage()});
 buildDice();
 </script>
 </body>
