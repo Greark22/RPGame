@@ -62,6 +62,8 @@ button:disabled{opacity:.45;cursor:default}
 .roll .t{font-weight:500}
 .grp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;color:var(--mut);font-size:.85rem}
 .pill{min-width:30px;text-align:center;padding:2px 8px;border-radius:8px;background:var(--c);color:#fff;font-weight:700;font-size:.95rem}
+.grp .gt{margin-left:6px;padding-left:10px;border-left:1px solid var(--line);color:var(--mut)}
+.grp .gt b{color:var(--ink);font-size:1rem}
 .sum{display:flex;gap:16px;margin-top:8px;font-size:1.05rem}
 .sum b{font-size:1.35rem}
 .sum .mx b{color:var(--acc)}
@@ -471,6 +473,8 @@ function feedRoll(e){
     const g=document.createElement('div');g.className='grp';
     const l=document.createElement('span');l.textContent=Object.keys(arr).length+'d'+s;g.appendChild(l);
     Object.values(arr).forEach(v=>{const p=document.createElement('span');p.className='pill';p.style.setProperty('--c',COL[s]);p.textContent=Number(v);g.appendChild(p)});
+    const gt=document.createElement('span');gt.className='gt';gt.append('Total d'+s+': ');
+    const gb=document.createElement('b');gb.textContent=Object.values(arr).reduce((x,y)=>x+Number(y),0);gt.appendChild(gb);g.appendChild(gt);
     body.appendChild(g);
   });
   const sum=document.createElement('div');sum.className='sum';
