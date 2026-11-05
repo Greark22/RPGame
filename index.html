@@ -62,8 +62,11 @@ button:disabled{opacity:.45;cursor:default}
 .roll .t{font-weight:500}
 .grp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;color:var(--mut);font-size:.85rem}
 .pill{min-width:30px;text-align:center;padding:2px 8px;border-radius:8px;background:var(--c);color:#fff;font-weight:700;font-size:.95rem}
-.grp .gt{margin-left:6px;padding-left:10px;border-left:1px solid var(--line);color:var(--mut)}
-.grp .gt b{color:var(--ink);font-size:1rem}
+.sum{flex-wrap:wrap;align-items:center;gap:8px 10px}
+.sum .gt{padding:3px 11px;border-radius:999px;font-size:.95rem;color:var(--ink);border:1px solid color-mix(in srgb,var(--c) 75%,transparent);background:color-mix(in srgb,var(--c) 16%,var(--card))}
+.sum .gt b{font-size:1.05rem;color:var(--ink)}
+.sum .tg{display:flex;gap:16px}
+.sum .gt+.tg{margin-left:6px}
 .sum{display:flex;gap:16px;margin-top:8px;font-size:1.05rem}
 .sum b{font-size:1.35rem}
 .sum .mx b{color:var(--acc)}
@@ -473,14 +476,19 @@ function feedRoll(e){
     const g=document.createElement('div');g.className='grp';
     const l=document.createElement('span');l.textContent=Object.keys(arr).length+'d'+s;g.appendChild(l);
     Object.values(arr).forEach(v=>{const p=document.createElement('span');p.className='pill';p.style.setProperty('--c',COL[s]);p.textContent=Number(v);g.appendChild(p)});
-    const gt=document.createElement('span');gt.className='gt';gt.append('Total d'+s+': ');
-    const gb=document.createElement('b');gb.textContent=Object.values(arr).reduce((x,y)=>x+Number(y),0);gt.appendChild(gb);g.appendChild(gt);
     body.appendChild(g);
   });
   const sum=document.createElement('div');sum.className='sum';
   const many=Number(e.cnt)>1;
-  sum.innerHTML=(many?'<span>Total <b></b></span><span class="mx">Maior <b></b></span>':'<span>Resultado <b></b></span>');
-  const bs=sum.querySelectorAll('b');bs[0].textContent=Number(e.total);if(many)bs[1].textContent=Number(e.max);
+  if(many)DICE.forEach(s=>{
+    const arr=e.res['d'+s];if(!arr)return;
+    const gt=document.createElement('span');gt.className='gt';gt.style.setProperty('--c',COL[s]);gt.append('Total d'+s+': ');
+    const gb=document.createElement('b');gb.textContent=Object.values(arr).reduce((x,y)=>x+Number(y),0);gt.appendChild(gb);sum.appendChild(gt);
+  });
+  const tg=document.createElement('span');tg.className='tg';
+  tg.innerHTML=(many?'<span>Total <b></b></span><span class="mx">Maior <b></b></span>':'<span>Resultado <b></b></span>');
+  const bs=tg.querySelectorAll('b');bs[0].textContent=Number(e.total);if(many)bs[1].textContent=Number(e.max);
+  sum.appendChild(tg);
   body.appendChild(sum);box.appendChild(body);
   const f=$('feed');f.prepend(box);
   while(f.querySelectorAll('.roll').length>50)f.querySelector('.roll:last-of-type').remove();
