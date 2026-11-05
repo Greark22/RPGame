@@ -352,11 +352,17 @@ $('create').onclick=async()=>{
   if(!code){herr('Dê um nome para a sala.');return}
   $('create').disabled=true;
   try{
-    if((await get(ref(db,`rooms/${code}/meta`))).exists())throw'Já existe uma sala com esse nome.';
+    if((await get(ref(db,`rooms/${code}/meta`))).exists()){
+      /* sala parada/vazia que ficou no servidor: apaga e libera o nome */
+      const [lb,ms]=await Promise.all([get(ref(db,`lobby/${code}`)),get(ref(db,`rooms/${code}/members`))]);
+      const l=lb.val();
+      if(l?(pop(l)===0||stale(l)):!ms.exists())await purge(code);
+      if((await get(ref(db,`rooms/${code}/meta`))).exists())throw'Já existe uma sala com esse nome.';
+    }
     const up={[`rooms/${code}/meta`]:{title,owner:uid,locked:!!pw}};
     if(pw)up[`rooms/${code}/secret`]=await sha(code+':'+pw);
     await update(ref(db),up);
-    try{await set(ref(db,`lobby/${code}`),{title,owner:uid,locked:!!pw,ts:serverTimestamp()})}catch(e){}
+    try{await set(ref(db,`lobby/${code}`),{title,owner:uid,locked:!!pw,ts:serverTimestamp(),members:{[uid]:true}})}catch(e){}
     await joinRoom(code,pw);
   }catch(e){herr(typeof e==='string'?e:'Erro: '+(e.code||e.message))}
   $('create').disabled=false;
