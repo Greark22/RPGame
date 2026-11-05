@@ -113,6 +113,18 @@ button:disabled{opacity:.45;cursor:default}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--mut);font-size:.8rem;margin-top:12px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend .dot{width:9px;height:9px}
+
+/* ---------- Mestre ---------- */
+.tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:var(--acc);color:var(--accink);font-size:.72rem;font-weight:700;vertical-align:middle}
+.tag.sec{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:500}
+button.chip{background:transparent;color:var(--ink);font-weight:400;cursor:pointer}
+button.chip:hover,button.chip.on{border-color:var(--acc)}
+.chip.mst{border-color:var(--acc)}
+#mgr{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+#mgr p{margin:0 0 10px;color:var(--ink)}
+#mgr .row{margin-top:0}
+button.danger{background:#e5484d;color:#fff}
+#note{margin:10px 0 0;font-size:.85rem;color:var(--mut);min-height:1.2em}
 </style>
 </head>
 <body>
@@ -174,12 +186,16 @@ button:disabled{opacity:.45;cursor:default}
       <div class="bar"><h2 id="rtitle" style="margin:0"></h2>
         <div class="row" style="margin:0"><button class="ghost" id="copy">Copiar link</button><button class="ghost" id="leave">Sair da sala</button></div></div>
       <div class="who" id="who" style="margin-top:12px"></div>
+      <div id="mgr" class="hide"></div>
+      <p class="empty hide" id="mhelp" style="font-size:.8rem;margin:10px 0 0">Você é o Mestre desta sala: toque em um jogador para passar o posto de Mestre ou expulsá-lo.</p>
+      <p id="note" role="status" aria-live="polite"></p>
       <p class="empty" style="font-size:.8rem;margin:10px 0 0">A sala fecha sozinha após 10 minutos sem rolagens.</p>
     </div>
     <div class="card">
       <h2>Dados</h2>
       <div class="dice" id="dice"></div>
       <div class="row"><button id="roll" disabled>Rolar</button><button class="ghost" id="clear">Limpar</button><span class="sel" id="sel">Nenhum dado selecionado</span></div>
+      <div id="hidebox" class="row hide"><button class="ghost" id="hidebtn" type="button" aria-pressed="false"></button><span class="sel" id="hidehelp"></span></div>
     </div>
     <div class="card">
       <h2>Rolagens</h2>
@@ -226,7 +242,7 @@ const cfg={
 };
 /* =============================================================== */
 
-const DICE=[4,6,8,10,12,20,100],MAXQ=20,MAXP=8,IDLE=600000,GRACE=15000;
+const DICE=[4,6,8,10,12,20,100],MAXQ=20,MAXP=8,IDLE=600000,GRACE=15000,OWNER_GRACE=20000;
 const COL={4:'#ef6a5b',6:'#f0a431',8:'#4cb782',10:'#2fb5b0',12:'#4f86f7',20:'#8b6cf0',100:'#e0589c'};
 const HUES=Object.values(COL);
 const $=id=>document.getElementById(id);
@@ -356,6 +372,9 @@ const herr=m=>{$('herr').textContent=m||''};
 async function joinRoom(code,pw){
   const meta=(await get(ref(db,`rooms/${code}/meta`))).val();
   if(!meta)throw'Sala não encontrada. Confira o nome.';
+  let banned=false;
+  try{banned=!!(await get(ref(db,`rooms/${code}/banned/${uid}`))).val()}catch(e){}
+  if(banned)throw'Você foi expulso desta sala pelo Mestre.';
   let proof='-';
   if(meta.locked){
     if(!pw){$('pwbox').classList.remove('hide');throw'Esta sala tem senha. Digite-a para entrar.'}
@@ -368,15 +387,32 @@ async function joinRoom(code,pw){
   catch(e){if(meta.locked)$('pwbox').classList.remove('hide');throw meta.locked?'Senha incorreta.':'Não foi possível entrar na sala.'}
   onDisconnect(mr).remove();
   const lm=ref(db,`lobby/${code}/members/${uid}`);
-  room={code,mr,lm,members:{},unsubs:[],live:false};
+  room={code,mr,lm,proof,meta,members:{},unsubs:[],live:false,hide:false,sel:null,act:null,claimT:null,banned:false,rejoining:false};
   try{await set(lm,true);onDisconnect(lm).remove();touch(code)}catch(e){}
-  room.unsubs.push(onValue(ref(db,`rooms/${code}/meta`),s=>{if(room&&room.code===code&&!s.exists())leave('A sala foi encerrada por inatividade.')}));
+  room.unsubs.push(onValue(ref(db,`rooms/${code}/meta`),s=>{
+    if(!room||room.code!==code)return;
+    if(!s.exists()){leave('A sala foi encerrada por inatividade.');return}
+    const m=s.val(),prev=room.meta?room.meta.owner:undefined;
+    room.meta=m;
+    if(prev!==undefined&&prev!==m.owner)ownerChanged(prev,m.owner);
+    renderRoom();ownerCheck();
+  }));
   $('rtitle').textContent=String(meta.title||code).slice(0,40)+(meta.locked?' 🔒':'');
-  room.unsubs.push(onValue(ref(db,`rooms/${code}/members`),s=>{room.members=s.val()||{};renderMembers()}));
+  room.unsubs.push(onValue(ref(db,`rooms/${code}/members`),s=>{
+    const r=room;if(!r||r.code!==code)return;
+    r.members=s.val()||{};
+    if(r.sel&&!r.members[r.sel]){r.sel=null;r.act=null}
+    renderRoom();ownerCheck();
+    if(!r.members[uid])rejoin(r);
+  }));
+  room.unsubs.push(onValue(ref(db,`rooms/${code}/banned/${uid}`),s=>{
+    if(room&&room.code===code&&s.val()===true){room.banned=true;leave('Você foi expulso da sala pelo Mestre.')}
+  },()=>{}));
   const rq=query(ref(db,`rooms/${code}/rolls`),limitToLast(50));
   room.unsubs.push(onChildAdded(rq,s=>addRoll(s.val())));
   /* o evento "value" chega depois do histórico: a partir dele, rolagens são novas e ganham animação */
   onValue(rq,()=>{if(room&&room.code===code)room.live=true},{onlyOnce:true});
+  renderRoom();
   show('room');
 }
 $('create').onclick=async()=>{
@@ -410,6 +446,13 @@ async function leave(msg){
   if(!room)return;
   const r=room;room=null;queue.length=0;if(!$('stage').classList.contains('hide'))closeStage();r.unsubs.forEach(f=>f());
   const gone=typeof msg==='string';
+  clearTimeout(r.claimT);clearTimeout(noteT);
+  /* saída voluntária do Mestre: o posto passa para outro jogador da sala */
+  if(!gone&&r.meta&&r.meta.owner===uid){
+    const o=Object.keys(r.members).filter(k=>k!==uid).sort()[0];
+    if(o)giveOwner(r.code,o).catch(()=>{});
+  }
+  $('note').textContent='';$('mgr').classList.add('hide');$('mgr').textContent='';$('roll').textContent='Rolar';
   try{await onDisconnect(r.lm).cancel();await remove(r.lm)}catch(e){}
   try{await onDisconnect(r.mr).cancel();await remove(r.mr)}catch(e){}
   if(!gone)closeIfEmpty(r.code);
@@ -421,17 +464,120 @@ $('copy').onclick=()=>{
   if(!room)return;
   navigator.clipboard.writeText(location.origin+location.pathname+'?sala='+encodeURIComponent(room.code)).then(()=>{$('copy').textContent='Copiado!';setTimeout(()=>$('copy').textContent='Copiar link',1600)});
 };
+/* ---------- Mestre da sala ---------- */
+let noteT=null;
+function isOwner(){return !!(room&&room.meta&&room.meta.owner===uid)}
+const errHint=e=>e&&e.code==='PERMISSION_DENIED'?' Sem permissão: confira as regras do Firebase.':'';
+function notice(msg){const n=$('note');n.textContent=msg;clearTimeout(noteT);noteT=setTimeout(()=>{n.textContent=''},7000)}
+const nameOf=id=>String((room&&room.members[id]&&room.members[id].name)||'Alguém').slice(0,20);
+
+async function giveOwner(code,to){
+  await update(ref(db),{[`rooms/${code}/meta/owner`]:to});
+  try{await set(ref(db,`lobby/${code}/owner`),to)}catch(e){}
+}
+function ownerChanged(prev,now){
+  if(!room)return;
+  if(prev===uid){room.hide=false;room.sel=null;room.act=null}
+  notice(now===uid?'Você agora é o Mestre da sala. 👑':nameOf(now)+' agora é o Mestre da sala. 👑');
+}
+/* se o Mestre sumir da sala (ex.: caiu a conexão), o jogador de menor id assume depois de uma carência */
+function ownerCheck(){
+  const r=room;if(!r||!r.meta)return;
+  const ids=Object.keys(r.members).sort();
+  if(!ids.length||r.members[r.meta.owner]){clearTimeout(r.claimT);r.claimT=null;return}
+  if(ids[0]!==uid||r.claimT)return;
+  r.claimT=setTimeout(async()=>{
+    r.claimT=null;if(room!==r)return;
+    try{
+      const [o,ms]=await Promise.all([get(ref(db,`rooms/${r.code}/meta/owner`)),get(ref(db,`rooms/${r.code}/members`))]);
+      const mem=ms.val()||{};
+      if(!mem[uid]||mem[o.val()]||Object.keys(mem).sort()[0]!==uid)return;
+      await giveOwner(r.code,uid);
+    }catch(e){}
+  },OWNER_GRACE);
+}
+/* queda de conexão: o servidor remove o membro; ao voltar, a pessoa reentra sozinha (a menos que tenha sido expulsa) */
+async function rejoin(r){
+  if(r.rejoining||r.banned)return;r.rejoining=true;
+  try{
+    const [b,mt]=await Promise.all([get(ref(db,`rooms/${r.code}/banned/${uid}`)).then(x=>x.val(),()=>false),get(ref(db,`rooms/${r.code}/meta`))]);
+    if(room!==r||!mt.exists())throw 0;
+    if(b){leave('Você foi expulso da sala pelo Mestre.');throw 0}
+    await set(r.mr,{name:prof.name,photo:prof.photo||'',proof:r.proof});
+    onDisconnect(r.mr).remove();
+    try{await set(r.lm,true);onDisconnect(r.lm).remove()}catch(e){}
+  }catch(e){}
+  setTimeout(()=>{r.rejoining=false},5000);
+}
+async function doGive(id){
+  const r=room;if(!r||!isOwner())return;
+  try{await giveOwner(r.code,id);r.sel=null;r.act=null}
+  catch(e){notice('Não foi possível passar o posto de Mestre.'+errHint(e))}
+}
+async function doKick(id){
+  const r=room;if(!r||!isOwner()||id===uid)return;
+  const nm=nameOf(id);
+  try{
+    await update(ref(db),{[`rooms/${r.code}/banned/${id}`]:true,[`rooms/${r.code}/members/${id}`]:null});
+    remove(ref(db,`lobby/${r.code}/members/${id}`)).catch(()=>{});
+    r.sel=null;r.act=null;renderRoom();notice('Você expulsou '+nm+' da sala.');
+  }catch(e){notice('Não foi possível expulsar.'+errHint(e))}
+}
+function renderRoom(){
+  if(!room)return;
+  const mine=isOwner();
+  if(!mine){room.hide=false;room.sel=null;room.act=null}
+  renderMembers();renderMgr();renderHide();
+  $('mhelp').classList.toggle('hide',!(mine&&Object.keys(room.members).length>1));
+  $('hidebox').classList.toggle('hide',!mine);
+}
 function renderMembers(){
   const box=$('who');box.textContent='';
-  const list=Object.entries(room.members);
+  const own=room.meta&&room.meta.owner,mine=own===uid;
+  const list=Object.entries(room.members).sort(([a],[b])=>(b===own)-(a===own));
   list.forEach(([id,m])=>{
-    const c=document.createElement('span');c.className='chip';
+    const click=mine&&id!==uid;
+    const c=document.createElement(click?'button':'span');
+    c.className='chip'+(id===own?' mst':'')+(click&&room.sel===id?' on':'');
+    if(click){c.type='button';c.title='Gerenciar jogador';c.onclick=()=>{room.sel=room.sel===id?null:id;room.act=null;renderRoom()}}
     c.appendChild(av(m.photo,m.name,'s'));
     c.appendChild(document.createTextNode(String(m.name||'?').slice(0,20)+(id===uid?' (você)':'')));
+    if(id===own){const t=document.createElement('span');t.className='tag';t.textContent='👑 Mestre';c.appendChild(t)}
     box.appendChild(c);
   });
   const n=document.createElement('span');n.className='chip';n.style.paddingLeft='12px';n.textContent=list.length+' / '+MAXP;box.appendChild(n);
 }
+function renderMgr(){
+  const box=$('mgr'),id=room&&room.sel,m=id&&room.members[id];
+  box.textContent='';
+  if(!isOwner()||!m){box.classList.add('hide');return}
+  const nm=String(m.name||'?').slice(0,20);
+  const p=document.createElement('p'),row=document.createElement('div');row.className='row';
+  const b=(t,cls,fn)=>{const x=document.createElement('button');x.type='button';x.textContent=t;if(cls)x.className=cls;x.onclick=fn;row.appendChild(x)};
+  if(!room.act){
+    p.textContent=nm;
+    b('Passar o posto de Mestre','ghost',()=>{room.act='give';renderMgr()});
+    b('Expulsar','ghost',()=>{room.act='kick';renderMgr()});
+    b('Fechar','link',()=>{room.sel=null;renderRoom()});
+  }else if(room.act==='give'){
+    p.textContent='Passar o posto de Mestre para '+nm+'? Você passa a ser jogador comum.';
+    b('Confirmar','',()=>doGive(id));
+    b('Voltar','link',()=>{room.act=null;renderMgr()});
+  }else{
+    p.textContent='Expulsar '+nm+'? Essa pessoa não poderá voltar a esta sala.';
+    b('Expulsar','danger',()=>doKick(id));
+    b('Voltar','link',()=>{room.act=null;renderMgr()});
+  }
+  box.append(p,row);box.classList.remove('hide');
+}
+function renderHide(){
+  const on=!!(room&&room.hide&&isOwner());
+  $('hidebtn').textContent=on?'🔒 Rolagem oculta: ligada':'👁 Rolagem oculta: desligada';
+  $('hidebtn').setAttribute('aria-pressed',on?'true':'false');
+  $('hidehelp').textContent=on?'Só você vê seus resultados: não aparecem para os jogadores nem no histórico deles.':'Ligue para rolar sem que os jogadores vejam.';
+  $('roll').textContent=on?'Rolar oculto':'Rolar';
+}
+$('hidebtn').onclick=()=>{if(!isOwner())return;room.hide=!room.hide;renderHide()};
 
 /* ---------- dados ---------- */
 function buildDice(){
@@ -456,7 +602,11 @@ $('roll').onclick=()=>{
   const res={};let total=0,max=0,cnt=0;
   DICE.forEach(s=>{if(!qty[s])return;res['d'+s]=Array.from({length:qty[s]},()=>rand(s));res['d'+s].forEach(v=>{total+=v;max=Math.max(max,v);cnt++})});
   if(!cnt)return;
-  push(ref(db,`rooms/${room.code}/rolls`),{uid,name:prof.name,res,total,max,cnt,ts:Date.now()});
+  const e={uid,name:prof.name,res,total,max,cnt,ts:Date.now()};
+  if(isOwner()&&room.hide){
+    /* rolagem oculta: nunca vai para o banco; só o Mestre vê (tela e histórico locais) */
+    addRoll({...e,secret:true});
+  }else push(ref(db,`rooms/${room.code}/rolls`),e);
   touch(room.code);
 };
 function addRoll(e){
@@ -470,7 +620,9 @@ function feedRoll(e){
   const m=room&&room.members[e.uid];
   box.appendChild(av(m&&m.photo,e.name,'s'));
   const body=document.createElement('div');
-  const t=document.createElement('div');t.className='t';t.textContent=String(e.name||'?').slice(0,20)+' rolou';body.appendChild(t);
+  const t=document.createElement('div');t.className='t';t.textContent=String(e.name||'?').slice(0,20)+' rolou';
+  if(e.secret){const sc=document.createElement('span');sc.className='tag sec';sc.textContent='🔒 oculta';t.appendChild(sc)}
+  body.appendChild(t);
   DICE.forEach(s=>{
     const arr=e.res['d'+s];if(!arr)return;
     const g=document.createElement('div');g.className='grp';
@@ -520,7 +672,7 @@ function next(){
   const tiles=$('tiles');tiles.textContent='';
   const tots=$('tots');tots.textContent='';tots.classList.remove('show');
   types.forEach(t=>{const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[t.s]);c.append('Total d'+t.s+': ');const b=document.createElement('b');b.textContent=t.total;c.appendChild(b);tots.appendChild(c)});
-  $('sh').textContent=String(e.name||'?').slice(0,20)+' rolou';
+  $('sh').textContent=String(e.name||'?').slice(0,20)+' rolou'+(e.secret?' (oculta: só você vê)':'');
   $('hint').textContent='';
   let pending=0;
   cur={e,done:false};
