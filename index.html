@@ -6,11 +6,14 @@
 <title>Mesa de Dados</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('mesa-tema')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}</script>
 <style>
-:root{--bg:#f4f6f8;--card:#fff;--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--acc:#4f46e5;--accink:#fff;--r:14px}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b22;--ink:#f3f4f6;--mut:#9ca3af;--line:#272b35;--acc:#7c74ff;--accink:#0f1115}}
+:root{--bg:#0f1115;--card:#181b22;--ink:#f3f4f6;--mut:#9ca3af;--line:#272b35;--acc:#7c74ff;--accink:#0f1115;--r:14px;color-scheme:dark}
+:root[data-theme=light]{--bg:#f4f6f8;--card:#fff;--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--acc:#4f46e5;--accink:#fff;color-scheme:light}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 'DM Sans',system-ui,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 'DM Sans',system-ui,sans-serif;transition:background-color .2s ease,color .2s ease}
+#theme{position:fixed;right:14px;bottom:14px;z-index:40;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:.9rem}
+#theme:hover{border-color:var(--acc)}
 .hide{display:none!important}
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
 .brand{font-weight:700;letter-spacing:-.02em;font-size:1.1rem}
@@ -86,6 +89,10 @@ button:disabled{opacity:.45;cursor:default}
 .done .num{opacity:1;transform:translate(-50%,-50%) scale(1);transition:opacity .2s ease,transform .45s cubic-bezier(.2,1.6,.4,1)}
 .dt figcaption{margin-top:8px;font-size:.9rem;color:#d1d5db}
 .dt figcaption b{color:#fff}
+.tots{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 10px;margin-top:20px;opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease}
+.tots.show{opacity:1;transform:none}
+.tot{padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid color-mix(in srgb,var(--c) 75%,transparent);font-size:1rem;color:#d1d5db}
+.tot b{color:#fff;font-size:1.1rem;margin-left:2px}
 .hint{margin-top:18px;font-size:.85rem;color:#9ca3af;min-height:1.2em}
 @media(prefers-reduced-motion:reduce){.face img{animation:none}}
 
@@ -176,10 +183,29 @@ button:disabled{opacity:.45;cursor:default}
   </section>
 </main>
 
+<button id="theme" type="button"></button>
+
 <div id="stage" class="hide" role="dialog" aria-live="polite" aria-label="Resultado da rolagem">
-  <div class="stagein"><div class="sh" id="sh"></div><div class="tiles" id="tiles"></div><div class="hint" id="hint"></div></div>
+  <div class="stagein"><div class="sh" id="sh"></div><div class="tiles" id="tiles"></div><div class="tots" id="tots" aria-label="Total por tipo de dado"></div><div class="hint" id="hint"></div></div>
 </div>
 
+<script>
+(function(){
+  const root=document.documentElement,btn=document.getElementById('theme');
+  function paint(){
+    const light=root.dataset.theme==='light';
+    btn.textContent=light?'\u{1F319} Modo Black':'\u2600\uFE0F Modo White';
+    btn.setAttribute('aria-label',light?'Mudar para o modo Black':'Mudar para o modo White');
+  }
+  btn.onclick=()=>{
+    const next=root.dataset.theme==='light'?'dark':'light';
+    root.dataset.theme=next;
+    try{localStorage.setItem('mesa-tema',next)}catch(e){}
+    paint();
+  };
+  paint();
+})();
+</script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -480,6 +506,8 @@ function next(){
     return{s,n:a.length,total:a.reduce((x,y)=>x+y,0),max:Math.max(...a)};
   });
   const tiles=$('tiles');tiles.textContent='';
+  const tots=$('tots');tots.textContent='';tots.classList.remove('show');
+  types.forEach(t=>{const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[t.s]);c.append('Total d'+t.s+': ');const b=document.createElement('b');b.textContent=t.total;c.appendChild(b);tots.appendChild(c)});
   $('sh').textContent=String(e.name||'?').slice(0,20)+' rolou';
   $('hint').textContent='';
   let pending=0;
@@ -510,7 +538,7 @@ function next(){
 }
 function finish(showHint){
   if(!cur||cur.done)return;
-  cur.done=true;feedRoll(cur.e);
+  cur.done=true;feedRoll(cur.e);$('tots').classList.add('show');
   if(showHint){$('hint').textContent='Toque para fechar';autoT=setTimeout(closeStage,7000)}
 }
 function closeStage(){
