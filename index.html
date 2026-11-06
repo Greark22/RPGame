@@ -147,12 +147,21 @@ button.chip:hover,button.chip.on{border-color:var(--acc)}
 #mgr .row{margin-top:0}
 button.danger{background:#e5484d;color:#fff}
 #note{margin:10px 0 0;font-size:.85rem;color:var(--mut);min-height:1.2em}
+
+/* ---------- perfil ---------- */
+.meb{display:inline-flex;align-items:center;gap:8px;background:none;color:var(--ink);padding:3px 12px 3px 4px;border:1px solid transparent;border-radius:999px;font-weight:500}
+.meb:hover{border-color:var(--line);background:var(--bg)}
+.meb #mename{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.err.ok{color:#4cb782}
+.prof{max-width:520px}
+.prof .card p{margin:0 0 4px;font-size:.9rem}
+.prof .row.c{justify-content:center}
 </style>
 </head>
 <body>
 <header id="top" class="hide">
   <div class="brand">Mesa de Dados</div>
-  <div class="me"><span id="meav"></span><span id="mename"></span><button class="link" id="logout">Sair</button></div>
+  <div class="me"><button class="meb" id="mebtn" type="button" title="Meu perfil" aria-label="Abrir meu perfil"><span id="meav"></span><span id="mename"></span></button><button class="link" id="logout">Sair</button></div>
 </header>
 <main>
   <section id="auth" class="hide">
@@ -200,6 +209,35 @@ button.danger{background:#e5484d;color:#fff}
       <div class="legend"><span><i class="dot g"></i>Menos da metade</span><span><i class="dot y"></i>Metade ou mais</span><span><i class="dot r"></i>Cheia</span></div>
       <p class="empty" style="font-size:.8rem;margin:8px 0 0">Salas vazias ou sem rolagens por 10 minutos são encerradas.</p>
       <p class="err" id="rerr" role="alert" style="margin:8px 0 0"></p>
+    </div>
+  </section>
+
+  <section id="profile" class="hide prof">
+    <div class="bar" style="margin-bottom:16px"><h1 style="margin:0">Meu perfil</h1><button class="ghost" id="pback" type="button">← Voltar</button></div>
+    <div class="card">
+      <h2>Foto de perfil</h2>
+      <label class="pick" aria-label="Escolher nova foto de perfil"><span id="pfav" class="av">+</span><input type="file" id="pffile" accept="image/*"></label>
+      <div class="cap" id="pfcap"></div>
+      <div class="row c"><button id="pfsave" type="button" disabled>Salvar foto</button><button class="ghost" id="pfrm" type="button">Remover foto</button></div>
+      <p class="err" id="pferr" role="alert"></p>
+    </div>
+    <div class="card">
+      <h2>Nome de usuário</h2>
+      <p class="empty">É o nome que você usa para entrar. Para trocar, confirme com a sua senha atual.</p>
+      <label for="pfnew">Novo nome</label>
+      <input type="text" id="pfnew" maxlength="20" autocomplete="off">
+      <label for="pfpass">Senha atual</label>
+      <input type="password" id="pfpass" maxlength="40" autocomplete="current-password">
+      <div class="row"><button id="pnsave" type="button">Salvar nome</button></div>
+      <p class="err" id="pnerr" role="alert"></p>
+    </div>
+    <div class="card">
+      <h2>Senha</h2>
+      <p class="empty">Não precisa da senha antiga: digite a nova e salve.</p>
+      <label for="pfnpw">Nova senha</label>
+      <input type="password" id="pfnpw" maxlength="40" autocomplete="new-password">
+      <div class="row"><button id="pwsave" type="button">Salvar senha</button></div>
+      <p class="err" id="pwerr" role="alert"></p>
     </div>
   </section>
 
@@ -280,7 +318,7 @@ button.danger{background:#e5484d;color:#fff}
 </script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,updatePassword,reauthenticateWithCredential,EmailAuthProvider} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {getDatabase,ref,get,set,update,push,remove,onValue,onChildAdded,onDisconnect,query,limitToLast,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 /* ====== COLE AQUI A CONFIGURAÇÃO DO SEU PROJETO FIREBASE ====== */
@@ -300,7 +338,8 @@ const $=id=>document.getElementById(id);
 const slug=s=>s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 const rand=n=>1+crypto.getRandomValues(new Uint32Array(1))[0]%n;
 const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
-const show=id=>{['auth','home','room'].forEach(s=>$(s).classList.toggle('hide',s!==id));$('top').classList.toggle('hide',id==='auth');document.querySelector('main').classList.toggle('wide',id==='room')};
+let view='auth',prevView='home';
+const show=id=>{view=id;['auth','home','profile','room'].forEach(s=>$(s).classList.toggle('hide',s!==id));$('top').classList.toggle('hide',id==='auth');document.querySelector('main').classList.toggle('wide',id==='room')};
 const JPG=/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/;
 
 function av(photo,name,cls=''){
@@ -319,7 +358,7 @@ function resize(file){return new Promise((ok,no)=>{
 
 if(cfg.apiKey==='COLE_AQUI'){show('auth');$('aerr').textContent='Falta colar a configuração do Firebase no index.html.';throw new Error('Firebase não configurado')}
 const app=initializeApp(cfg),auth=getAuth(app),db=getDatabase(app);
-let uid=null,prof={name:'',photo:''},room=null,qty={},mode='login',photo='',registering=false,linkDone=false;
+let cred=null,uid=null,prof={name:'',photo:''},room=null,qty={},mode='login',photo='',registering=false,linkDone=false;
 let skew=0;onValue(ref(db,'.info/serverTimeOffset'),s=>{skew=s.val()||0});
 const srv=()=>Date.now()+skew;
 
@@ -342,20 +381,34 @@ $('go').onclick=async()=>{
   $('go').disabled=true;$('aerr').textContent='';
   try{
     const key=name.toLowerCase();
-    const email=(await sha('u:'+key)).slice(0,40)+'@mesadados.app';
+    const h=(await sha('u:'+key)).slice(0,40);
     const fpw=await sha('p:'+key+':'+pw);
+    const mail=a=>a+'@mesadados.app';
+    /* contas que trocaram de nome: o nome novo aponta para o e-mail interno original */
+    let alias=null;
+    try{const sn=await get(ref(db,'logins/'+h));if(sn.exists()&&sn.val()&&typeof sn.val().e==='string')alias=sn.val().e}catch(x){}
     if(mode==='new'){
+      if(alias)throw{code:'auth/email-already-in-use'};
       registering=true;
-      const c=await createUserWithEmailAndPassword(auth,email,fpw);
+      const c=await createUserWithEmailAndPassword(auth,mail(h),fpw);
+      cred={email:c.user.email,fpw};
       prof={name:name.slice(0,20),photo};
       await set(ref(db,'users/'+c.user.uid),prof);
+      try{await set(ref(db,'logins/'+h),{e:h,uid:c.user.uid})}catch(x){}
       registering=false;await start(c.user);
-    }else await signInWithEmailAndPassword(auth,email,fpw);
+    }else{
+      try{const c=await signInWithEmailAndPassword(auth,mail(alias||h),fpw);cred={email:c.user.email,fpw}}
+      catch(e){
+        if(alias&&alias!==h&&['auth/invalid-credential','auth/wrong-password','auth/user-not-found'].includes(e.code)){
+          const c=await signInWithEmailAndPassword(auth,mail(h),fpw);cred={email:c.user.email,fpw};
+        }else throw e;
+      }
+    }
   }catch(e){registering=false;$('aerr').textContent=authMsg(e)}
   $('go').disabled=false;
 };
 $('logout').onclick=async()=>{await leave();await signOut(auth)};
-onAuthStateChanged(auth,async u=>{if(registering)return;if(!u){uid=null;items=[];renderItems();unwatchLobby();show('auth');return}await start(u)});
+onAuthStateChanged(auth,async u=>{if(registering)return;if(!u){uid=null;cred=null;prevView='home';items=[];renderItems();unwatchLobby();show('auth');return}await start(u)});
 
 /* ---------- lista de salas (lobby) ---------- */
 let lobby={},lobbyOff=null,sweepT=null;
@@ -411,9 +464,13 @@ async function start(u){
   uid=u.uid;items=loadItems();renderItems();
   const v=(await get(ref(db,'users/'+uid))).val();
   prof=v||{name:'Jogador',photo:''};
-  $('mename').textContent=prof.name;$('hname').textContent=prof.name;
-  $('meav').textContent='';$('meav').appendChild(av(prof.photo,prof.name,'s'));
+  paintMe();
   show('home');
+  /* garante que o nome desta conta esteja registrado em "logins" (reserva o nome contra trocas de outras contas) */
+  (async()=>{try{
+    const h=(await sha('u:'+String(prof.name).toLowerCase())).slice(0,40);
+    if(!(await get(ref(db,'logins/'+h))).exists())await set(ref(db,'logins/'+h),{e:String(u.email||'').split('@')[0],uid});
+  }catch(e){}})();
   watchLobby();
   const ps=new URLSearchParams(location.search),q=ps.get('sala'),k=ps.get('k');
   if(q)$('jname').value=q;
@@ -517,7 +574,7 @@ async function leave(msg){
   try{await onDisconnect(r.mr).cancel();await remove(r.mr)}catch(e){}
   if(!gone)closeIfEmpty(r.code);
   $('feed').querySelectorAll('.roll').forEach(n=>n.remove());$('none').classList.remove('hide');
-  if(uid){show('home');herr(gone?msg:'')}
+  if(uid){if(view==='profile')prevView='home';else show('home');herr(gone?msg:'')}
 }
 $('leave').onclick=leave;
 $('copy').onclick=()=>{
@@ -885,6 +942,115 @@ function closeStage(){
 }
 $('stage').onclick=closeStage;
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!$('stage').classList.contains('hide'))closeStage()});
+/* ---------- perfil ---------- */
+let pfPhoto; /* undefined = sem mudança · '' = remover · texto = foto nova */
+function pmsg(id,t,ok){const n=$(id);n.textContent=t||'';n.classList.toggle('ok',!!(ok&&t))}
+function paintMe(){
+  $('mename').textContent=prof.name;$('hname').textContent=prof.name;
+  const m=$('meav');m.textContent='';m.appendChild(av(prof.photo,prof.name,'s'));
+}
+function paintPf(){
+  const p=$('pfav'),shown=pfPhoto===undefined?(prof.photo||''):pfPhoto;
+  p.textContent='';
+  if(shown&&JPG.test(shown)){const i=document.createElement('img');i.src=shown;i.alt='';p.appendChild(i)}else p.textContent='+';
+  const changed=pfPhoto!==undefined&&pfPhoto!==(prof.photo||'');
+  $('pfsave').disabled=!changed;
+  $('pfrm').disabled=!shown;
+  $('pfcap').textContent=changed?(pfPhoto?'Foto nova escolhida. Salve para aplicar.':'A foto será removida quando você salvar.'):'Toque na foto para escolher outra';
+}
+function pErr(e){
+  const c=e&&(e.code||'');
+  return c==='PERMISSION_DENIED'?'Sem permissão. Confira as regras do Firebase (nó "logins").'
+   :c==='auth/too-many-requests'?'Muitas tentativas. Aguarde um pouco e tente de novo.'
+   :c==='auth/network-request-failed'?'Sem conexão. Tente novamente.'
+   :c==='auth/requires-recent-login'?'Por segurança, saia da conta, entre de novo e tente outra vez.'
+   :c==='auth/weak-password'?'A senha precisa ter pelo menos 6 caracteres.'
+   :'Erro: '+(c||(e&&e.message)||e);
+}
+function openProfile(){
+  if(!uid)return;
+  if(view!=='profile')prevView=view;
+  pfPhoto=undefined;
+  $('pfnew').value=prof.name;$('pfpass').value='';$('pfnpw').value='';
+  ['pferr','pnerr','pwerr'].forEach(i=>pmsg(i,''));
+  paintPf();show('profile');window.scrollTo(0,0);
+}
+$('mebtn').onclick=openProfile;
+$('pback').onclick=()=>show(prevView==='room'&&!room?'home':prevView);
+
+$('pffile').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{pfPhoto=await resize(f);pmsg('pferr','');paintPf()}catch(x){pmsg('pferr','Não foi possível ler essa imagem.')}
+};
+$('pfrm').onclick=()=>{pfPhoto='';pmsg('pferr','');paintPf()};
+$('pfsave').onclick=async()=>{
+  if(pfPhoto===undefined)return;const val=pfPhoto;
+  $('pfsave').disabled=true;pmsg('pferr','');
+  try{
+    /* null apaga o dado da foto antiga no banco; texto novo o substitui */
+    await update(ref(db,'users/'+uid),{photo:val||null});
+    prof.photo=val;pfPhoto=undefined;
+    if(room){try{await update(room.mr,{photo:val||null})}catch(x){}}
+    paintMe();paintPf();pmsg('pferr',val?'Foto atualizada.':'Foto removida.',true);
+  }catch(e){paintPf();pmsg('pferr','Não foi possível salvar a foto.'+errHint(e))}
+};
+
+$('pnsave').onclick=async()=>{
+  const nn=$('pfnew').value.trim().slice(0,20),pw=$('pfpass').value,user=auth.currentUser;
+  pmsg('pnerr','');
+  if(!user)return;
+  if(!nn){pmsg('pnerr','Digite o novo nome.');return}
+  if(nn===prof.name){pmsg('pnerr','Esse já é o seu nome.');return}
+  if(!pw){pmsg('pnerr','Digite sua senha atual para confirmar.');return}
+  $('pnsave').disabled=true;
+  const oldName=prof.name;let claimed=null,wrote=false;
+  try{
+    const oldKey=oldName.toLowerCase(),newKey=nn.toLowerCase();
+    try{await reauthenticateWithCredential(user,EmailAuthProvider.credential(user.email,await sha('p:'+oldKey+':'+pw)))}
+    catch(e){throw (e.code==='auth/invalid-credential'||e.code==='auth/wrong-password')?'Senha incorreta.':e}
+    const local=user.email.split('@')[0];
+    const hOld=(await sha('u:'+oldKey)).slice(0,40),hNew=(await sha('u:'+newKey)).slice(0,40);
+    const nf=await sha('p:'+newKey+':'+pw);
+    if(hNew!==hOld){
+      const sn=await get(ref(db,'logins/'+hNew));
+      if(sn.exists()&&sn.val()&&sn.val().uid!==uid)throw'Esse nome já está em uso.';
+      await set(ref(db,'logins/'+hNew),{e:local,uid});claimed=hNew;
+    }
+    await update(ref(db,'users/'+uid),{name:nn});wrote=true;
+    /* a senha de login depende do nome, então ela é regravada com o nome novo (mesma senha digitada) */
+    if(newKey!==oldKey)await updatePassword(user,nf);
+    cred={email:user.email,fpw:nf};
+    prof.name=nn;
+    if(hNew!==hOld)remove(ref(db,'logins/'+hOld)).catch(()=>{});
+    if(room)update(room.mr,{name:nn}).catch(()=>{});
+    paintMe();$('pfpass').value='';
+    pmsg('pnerr','Nome alterado. Use "'+nn+'" para entrar da próxima vez.',true);
+  }catch(e){
+    if(wrote){try{await update(ref(db,'users/'+uid),{name:oldName})}catch(x){}}
+    if(claimed){try{await remove(ref(db,'logins/'+claimed))}catch(x){}}
+    pmsg('pnerr',typeof e==='string'?e:pErr(e));
+  }
+  $('pnsave').disabled=false;
+};
+
+$('pwsave').onclick=async()=>{
+  const np=$('pfnpw').value,user=auth.currentUser;
+  pmsg('pwerr','');
+  if(!user)return;
+  if(np.length<6){pmsg('pwerr','A nova senha precisa ter pelo menos 6 caracteres.');return}
+  $('pwsave').disabled=true;
+  try{
+    const nf=await sha('p:'+prof.name.toLowerCase()+':'+np);
+    /* sem pedir a senha antiga: reaproveita o login desta sessão para a reautenticação exigida pelo Firebase */
+    if(cred)await reauthenticateWithCredential(user,EmailAuthProvider.credential(cred.email,cred.fpw));
+    await updatePassword(user,nf);
+    cred={email:user.email,fpw:nf};
+    $('pfnpw').value='';pmsg('pwerr','Senha alterada.',true);
+  }catch(e){pmsg('pwerr',pErr(e))}
+  $('pwsave').disabled=false;
+};
+[['pfnew','pnsave'],['pfpass','pnsave'],['pfnpw','pwsave']].forEach(([i,b])=>$(i).addEventListener('keydown',ev=>{if(ev.key==='Enter')$(b).click()}));
+
 buildDice();buildItemForm();renderItems();
 </script>
 </body>
