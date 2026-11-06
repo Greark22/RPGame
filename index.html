@@ -12,8 +12,9 @@
 :root[data-theme=light]{--bg:#f4f6f8;--card:#fff;--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--acc:#4f46e5;--accink:#fff;color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 'DM Sans',system-ui,sans-serif;transition:background-color .2s ease,color .2s ease}
-#theme{position:fixed;right:14px;bottom:14px;z-index:40;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:.9rem}
-#theme:hover{border-color:var(--acc)}
+#theme,#fs{position:fixed;right:14px;bottom:14px;z-index:40;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:.9rem}
+#theme:hover,#fs:hover{border-color:var(--acc)}
+#fs{bottom:62px}
 .hide{display:none!important}
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
 .brand{font-weight:700;letter-spacing:-.02em;font-size:1.1rem}
@@ -70,6 +71,7 @@ button:disabled{opacity:.45;cursor:default}
 .sum{display:flex;gap:16px;margin-top:8px;font-size:1.05rem}
 .sum b{font-size:1.35rem}
 .sum .mx b{color:var(--acc)}
+.sum .mn b{color:#e5484d}
 .empty{color:var(--mut)}
 
 /* ---------- layout da sala + itens ---------- */
@@ -240,6 +242,7 @@ button.danger{background:#e5484d;color:#fff}
 </main>
 
 <button id="theme" type="button"></button>
+<button id="fs" type="button" aria-pressed="false">⛶ Tela Cheia</button>
 
 <div id="stage" class="hide" role="dialog" aria-live="polite" aria-label="Resultado da rolagem">
   <div class="stagein"><div class="sh" id="sh"></div><div class="tiles" id="tiles"></div><div class="tots" id="tots" aria-label="Total por tipo de dado"></div><div class="hint" id="hint"></div></div>
@@ -260,6 +263,19 @@ button.danger{background:#e5484d;color:#fff}
     paint();
   };
   paint();
+  /* Tela Cheia: alterna entre tela cheia (sem a barra do navegador) e o modo normal */
+  const fs=document.getElementById('fs'),de=document.documentElement;
+  const isFs=()=>!!(document.fullscreenElement||document.webkitFullscreenElement);
+  if(!(document.fullscreenEnabled||document.webkitFullscreenEnabled))fs.classList.add('hide');
+  function paintFs(){const on=isFs();fs.textContent=(on?'\u{1F5D7}':'\u26F6')+' Tela Cheia';fs.setAttribute('aria-pressed',on?'true':'false')}
+  fs.onclick=()=>{
+    try{
+      const p=isFs()?(document.exitFullscreen||document.webkitExitFullscreen).call(document):(de.requestFullscreen||de.webkitRequestFullscreen).call(de);
+      if(p&&p.catch)p.catch(()=>{});
+    }catch(e){}
+  };
+  document.addEventListener('fullscreenchange',paintFs);document.addEventListener('webkitfullscreenchange',paintFs);
+  paintFs();
 })();
 </script>
 <script type="module">
@@ -692,8 +708,13 @@ function feedRoll(e){
     const gb=document.createElement('b');gb.textContent=ca.filter(v=>v===k).length;gt.appendChild(gb);sum.appendChild(gt);
   });
   const tg=document.createElement('span');tg.className='tg';
-  tg.innerHTML=(many?'<span>Total <b></b></span><span class="mx">Maior <b></b></span>':'<span>Resultado <b></b></span>');
-  const bs=tg.querySelectorAll('b');bs[0].textContent=Number(e.total);if(many)bs[1].textContent=Number(e.max);
+  tg.innerHTML=(many?'<span>Total <b></b></span><span class="mx">Maior <b></b></span><span class="mn">Menor <b></b></span>':'<span>Resultado <b></b></span>');
+  const bs=tg.querySelectorAll('b');bs[0].textContent=Number(e.total);
+  if(many){
+    let mn=Infinity;
+    DICE.forEach(s=>{if(isCoin(s))return;const arr=e.res['d'+s];if(arr)Object.values(arr).forEach(v=>{mn=Math.min(mn,Number(v))})});
+    bs[1].textContent=Number(e.max);bs[2].textContent=isFinite(mn)?mn:'-';
+  }
   if(Number(e.cnt)>0)sum.appendChild(tg);
   if(sum.children.length)body.appendChild(sum);
   box.appendChild(body);
@@ -788,11 +809,20 @@ function next(){
   playing=true;
   const types=DICE.filter(s=>e.res['d'+s]).map(s=>{
     const a=Object.values(e.res['d'+s]).map(Number);
-    return{s,a,n:a.length,total:a.reduce((x,y)=>x+y,0),max:Math.max(...a)};
+    return{s,a,n:a.length,total:a.reduce((x,y)=>x+y,0),max:Math.max(...a),min:Math.min(...a)};
   });
   const tiles=$('tiles');tiles.textContent='';
   const tots=$('tots');tots.textContent='';tots.classList.remove('show');
-  types.filter(t=>!isCoin(t.s)).forEach(t=>{const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[t.s]);c.append('Total d'+t.s+': ');const b=document.createElement('b');b.textContent=t.total;c.appendChild(b);tots.appendChild(c)});
+  types.filter(t=>!isCoin(t.s)&&t.n>1).forEach(t=>{const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[t.s]);c.append('Total d'+t.s+': ');const b=document.createElement('b');b.textContent=t.total;c.appendChild(b);tots.appendChild(c)});
+  /* mais de um tipo de dado: total, maior e menor de todos os dados numéricos juntos */
+  const nt=types.filter(t=>!isCoin(t.s));
+  if(nt.length>1){
+    const all=[].concat(...nt.map(t=>t.a));
+    [['Total',all.reduce((x,y)=>x+y,0)],['Maior',Math.max(...all)],['Menor',Math.min(...all)]].forEach(([lab,val])=>{
+      const c=document.createElement('span');c.className='tot';c.style.setProperty('--c','#9ca3af');c.append(lab+': ');
+      const b=document.createElement('b');b.textContent=val;c.appendChild(b);tots.appendChild(c);
+    });
+  }
   types.filter(t=>isCoin(t.s)&&t.n>1).forEach(t=>[[1,'Caras'],[2,'Coroas']].forEach(([k,lab])=>{
     const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[2]);c.append('Total de '+lab.toLowerCase()+': ');
     const b=document.createElement('b');b.textContent=t.a.filter(v=>v===k).length;c.appendChild(b);tots.appendChild(c);
@@ -819,7 +849,7 @@ function next(){
     img.onload=go;img.onerror=go;img.src=coinURL(v);
     setTimeout(go,1500);
   }));
-  types.filter(t=>!isCoin(t.s)).forEach(t=>[['Total',t.total],['Maior',t.max]].forEach(([lab,val])=>{
+  types.filter(t=>!isCoin(t.s)).forEach(t=>(t.n>1?[['Total',t.total],['Maior',t.max],['Menor',t.min]]:[['Único',t.total]]).forEach(([lab,val])=>{
     const fig=document.createElement('figure');fig.className='dt';
     fig.style.setProperty('--c',COL[t.s]);fig.style.setProperty('--bg0',BG0[t.s]);
     const face=document.createElement('div');face.className='face';
@@ -833,7 +863,7 @@ function next(){
     const num=document.createElement('span');num.className='num'+(String(val).length>2?' l3':'');num.textContent=val;
     face.append(shd,img,num);
     const cap=document.createElement('figcaption');
-    cap.innerHTML=lab==='Total'?'<b></b> · Total':'<b></b> · Maior';
+    cap.innerHTML=lab==='Único'?'<b></b>':'<b></b> · '+lab;
     cap.querySelector('b').textContent=t.n+'d'+t.s;
     fig.append(face,cap);tiles.appendChild(fig);
     pending++;
