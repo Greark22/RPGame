@@ -72,6 +72,25 @@ button:disabled{opacity:.45;cursor:default}
 .sum .mx b{color:var(--acc)}
 .empty{color:var(--mut)}
 
+/* ---------- layout da sala + itens ---------- */
+main.wide{max-width:1080px}
+.roomgrid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;align-items:start}
+.roomgrid>aside{position:sticky;top:12px}
+.roomcol{min-width:0}
+@media(max-width:820px){.roomgrid{grid-template-columns:1fr}.roomgrid>aside{position:static;order:2}}
+.it{display:flex;gap:6px;margin-bottom:8px}
+.it .go{flex:1;min-width:0;text-align:left;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-left:4px solid var(--acc);padding:9px 12px}
+.it .go:hover{border-color:var(--acc)}
+.it .go b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .go small{display:block;color:var(--mut);font-size:.8rem;font-weight:400}
+.it .x{background:transparent;color:var(--mut);border:1px solid var(--line);padding:0 11px}
+.idice{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.imini{display:flex;align-items:center;gap:4px;border:1px solid var(--line);border-left:3px solid var(--c);border-radius:8px;padding:4px 6px}
+.imini.on{background:color-mix(in srgb,var(--c) 14%,var(--card))}
+.imini b{flex:1;color:var(--c);font-size:.9rem}
+.imini button{width:24px;height:24px;padding:0;border-radius:50%;background:var(--bg);color:var(--ink);border:1px solid var(--line);line-height:1}
+.imini span{min-width:1.2em;text-align:center;font-weight:700;font-size:.9rem}
+
 /* ---------- palco da rolagem ---------- */
 #stage{position:fixed;inset:0;z-index:50;background:rgba(8,10,14,.86);display:flex;padding:20px;overflow:auto;cursor:pointer;animation:fadein .25s ease}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
@@ -183,6 +202,19 @@ button.danger{background:#e5484d;color:#fff}
   </section>
 
   <section id="room" class="hide">
+   <div class="roomgrid">
+    <aside class="card" id="items" aria-label="Meus itens">
+      <h2>Meus itens</h2>
+      <p class="empty" style="font-size:.8rem;margin:0 0 12px">Só você vê esta lista. Toque em um item para rolar os dados dele na hora.</p>
+      <div id="ilist"></div>
+      <p class="empty" id="inone" style="font-size:.9rem">Nenhum item ainda.</p>
+      <label for="iname">Novo item</label>
+      <input type="text" id="iname" maxlength="24" placeholder="Espada longa">
+      <div class="idice" id="idice"></div>
+      <div class="row"><button id="iadd" type="button" disabled>Adicionar item</button></div>
+      <p class="err" id="ierr" role="alert"></p>
+    </aside>
+    <div class="roomcol">
     <div class="card">
       <div class="bar"><h2 id="rtitle" style="margin:0"></h2>
         <div class="row" style="margin:0"><button class="ghost" id="copy">Copiar link</button><button class="ghost" id="leave">Sair da sala</button></div></div>
@@ -202,6 +234,8 @@ button.danger{background:#e5484d;color:#fff}
       <h2>Rolagens</h2>
       <div id="feed"><p class="empty" id="none">Nenhuma rolagem ainda.</p></div>
     </div>
+    </div>
+   </div>
   </section>
 </main>
 
@@ -250,7 +284,7 @@ const $=id=>document.getElementById(id);
 const slug=s=>s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 const rand=n=>1+crypto.getRandomValues(new Uint32Array(1))[0]%n;
 const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
-const show=id=>{['auth','home','room'].forEach(s=>$(s).classList.toggle('hide',s!==id));$('top').classList.toggle('hide',id==='auth')};
+const show=id=>{['auth','home','room'].forEach(s=>$(s).classList.toggle('hide',s!==id));$('top').classList.toggle('hide',id==='auth');document.querySelector('main').classList.toggle('wide',id==='room')};
 const JPG=/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/;
 
 function av(photo,name,cls=''){
@@ -269,7 +303,7 @@ function resize(file){return new Promise((ok,no)=>{
 
 if(cfg.apiKey==='COLE_AQUI'){show('auth');$('aerr').textContent='Falta colar a configuração do Firebase no index.html.';throw new Error('Firebase não configurado')}
 const app=initializeApp(cfg),auth=getAuth(app),db=getDatabase(app);
-let uid=null,prof={name:'',photo:''},room=null,qty={},mode='login',photo='',registering=false;
+let uid=null,prof={name:'',photo:''},room=null,qty={},mode='login',photo='',registering=false,linkDone=false;
 let skew=0;onValue(ref(db,'.info/serverTimeOffset'),s=>{skew=s.val()||0});
 const srv=()=>Date.now()+skew;
 
@@ -305,7 +339,7 @@ $('go').onclick=async()=>{
   $('go').disabled=false;
 };
 $('logout').onclick=async()=>{await leave();await signOut(auth)};
-onAuthStateChanged(auth,async u=>{if(registering)return;if(!u){uid=null;unwatchLobby();show('auth');return}await start(u)});
+onAuthStateChanged(auth,async u=>{if(registering)return;if(!u){uid=null;items=[];renderItems();unwatchLobby();show('auth');return}await start(u)});
 
 /* ---------- lista de salas (lobby) ---------- */
 let lobby={},lobbyOff=null,sweepT=null;
@@ -358,19 +392,25 @@ async function enterFromList(code,r){
 }
 
 async function start(u){
-  uid=u.uid;
+  uid=u.uid;items=loadItems();renderItems();
   const v=(await get(ref(db,'users/'+uid))).val();
   prof=v||{name:'Jogador',photo:''};
   $('mename').textContent=prof.name;$('hname').textContent=prof.name;
   $('meav').textContent='';$('meav').appendChild(av(prof.photo,prof.name,'s'));
   show('home');
   watchLobby();
-  const q=new URLSearchParams(location.search).get('sala');if(q)$('jname').value=q;
+  const ps=new URLSearchParams(location.search),q=ps.get('sala'),k=ps.get('k');
+  if(q)$('jname').value=q;
+  /* entrou por um link de sala: vai direto para ela (uma vez por visita), mesmo trancada */
+  if(q&&!linkDone){
+    linkDone=true;const code=slug(q);
+    if(code){try{await joinRoom(code,'',k||'')}catch(e){herr(typeof e==='string'?e:'Erro: '+(e.code||e.message))}}
+  }
 }
 
 /* ---------- salas ---------- */
 const herr=m=>{$('herr').textContent=m||''};
-async function joinRoom(code,pw){
+async function joinRoom(code,pw,key){
   const meta=(await get(ref(db,`rooms/${code}/meta`))).val();
   if(!meta)throw'Sala não encontrada. Confira o nome.';
   let banned=false;
@@ -378,8 +418,11 @@ async function joinRoom(code,pw){
   if(banned)throw'Você foi expulso desta sala pelo Mestre.';
   let proof='-';
   if(meta.locked){
-    if(!pw){$('pwbox').classList.remove('hide');throw'Esta sala tem senha. Digite-a para entrar.'}
-    proof=await sha(code+':'+pw);
+    if(key&&/^[0-9a-f]{64}$/.test(key))proof=key; /* link compartilhado: já leva a prova da senha */
+    else{
+      if(!pw){$('pwbox').classList.remove('hide');throw'Esta sala tem senha. Digite-a para entrar.'}
+      proof=await sha(code+':'+pw);
+    }
   }
   const ms=(await get(ref(db,`rooms/${code}/members`))).val()||{};
   if(!ms[uid]&&Object.keys(ms).length>=MAXP)throw'Sala cheia (máximo de 8 jogadores).';
@@ -463,7 +506,9 @@ async function leave(msg){
 $('leave').onclick=leave;
 $('copy').onclick=()=>{
   if(!room)return;
-  navigator.clipboard.writeText(location.origin+location.pathname+'?sala='+encodeURIComponent(room.code)).then(()=>{$('copy').textContent='Copiado!';setTimeout(()=>$('copy').textContent='Copiar link',1600)});
+  let url=location.origin+location.pathname+'?sala='+encodeURIComponent(room.code);
+  if(room.meta&&room.meta.locked&&room.proof&&room.proof!=='-')url+='&k='+encodeURIComponent(room.proof);
+  navigator.clipboard.writeText(url).then(()=>{$('copy').textContent='Copiado!';setTimeout(()=>$('copy').textContent='Copiar link',1600)});
 };
 /* ---------- Mestre da sala ---------- */
 let noteT=null;
@@ -599,18 +644,20 @@ function upd(){
   $('sel').textContent=t.length?t.join(' + '):'Nenhum dado selecionado';$('roll').disabled=!t.length;
 }
 $('clear').onclick=()=>document.querySelectorAll('.die').forEach(d=>d._set(0));
-$('roll').onclick=()=>{
+function rollDice(q,label){
   if(!room)return;
   const res={};let total=0,max=0,cnt=0,any=0;
-  DICE.forEach(s=>{if(!qty[s])return;res['d'+s]=Array.from({length:qty[s]},()=>rand(s));any++;if(!isCoin(s))res['d'+s].forEach(v=>{total+=v;max=Math.max(max,v);cnt++})});
+  DICE.forEach(s=>{if(!q[s])return;res['d'+s]=Array.from({length:q[s]},()=>rand(s));any++;if(!isCoin(s))res['d'+s].forEach(v=>{total+=v;max=Math.max(max,v);cnt++})});
   if(!any)return;
   const e={uid,name:prof.name,res,total,max,cnt,ts:Date.now()};
+  if(label)e.item=String(label).slice(0,24);
   if(isOwner()&&room.hide){
     /* rolagem oculta: nunca vai para o banco; só o Mestre vê (tela e histórico locais) */
     addRoll({...e,secret:true});
   }else push(ref(db,`rooms/${room.code}/rolls`),e);
   touch(room.code);
-};
+}
+$('roll').onclick=()=>rollDice(qty);
 function addRoll(e){
   if(!e||typeof e!=='object'||!e.res)return;
   if(room&&room.live){queue.push(e);if(!playing)next()}
@@ -622,7 +669,7 @@ function feedRoll(e){
   const m=room&&room.members[e.uid];
   box.appendChild(av(m&&m.photo,e.name,'s'));
   const body=document.createElement('div');
-  const t=document.createElement('div');t.className='t';t.textContent=String(e.name||'?').slice(0,20)+' rolou';
+  const t=document.createElement('div');t.className='t';t.textContent=String(e.name||'?').slice(0,20)+' rolou'+(e.item?' · '+String(e.item).slice(0,24):'');
   if(e.secret){const sc=document.createElement('span');sc.className='tag sec';sc.textContent='🔒 oculta';t.appendChild(sc)}
   body.appendChild(t);
   DICE.forEach(s=>{
@@ -639,14 +686,73 @@ function feedRoll(e){
     const gt=document.createElement('span');gt.className='gt';gt.style.setProperty('--c',COL[s]);gt.append('Total d'+s+': ');
     const gb=document.createElement('b');gb.textContent=Object.values(arr).reduce((x,y)=>x+Number(y),0);gt.appendChild(gb);sum.appendChild(gt);
   });
+  const ca=e.res.d2?Object.values(e.res.d2).map(Number):[];
+  if(ca.length>1)[[1,'caras'],[2,'coroas']].forEach(([k,lab])=>{
+    const gt=document.createElement('span');gt.className='gt';gt.style.setProperty('--c',COL[2]);gt.append('Total de '+lab+': ');
+    const gb=document.createElement('b');gb.textContent=ca.filter(v=>v===k).length;gt.appendChild(gb);sum.appendChild(gt);
+  });
   const tg=document.createElement('span');tg.className='tg';
   tg.innerHTML=(many?'<span>Total <b></b></span><span class="mx">Maior <b></b></span>':'<span>Resultado <b></b></span>');
   const bs=tg.querySelectorAll('b');bs[0].textContent=Number(e.total);if(many)bs[1].textContent=Number(e.max);
-  sum.appendChild(tg);
-  if(Number(e.cnt)>0)body.appendChild(sum);
+  if(Number(e.cnt)>0)sum.appendChild(tg);
+  if(sum.children.length)body.appendChild(sum);
   box.appendChild(body);
   const f=$('feed');f.prepend(box);
   while(f.querySelectorAll('.roll').length>50)f.querySelector('.roll:last-of-type').remove();
+}
+
+/* ---------- itens (só do usuário, salvos neste navegador) ---------- */
+let items=[];const idq={};
+const IKEY=()=>'mesa-itens-'+uid;
+function loadItems(){
+  try{
+    const a=JSON.parse(localStorage.getItem(IKEY())||'[]');
+    return (Array.isArray(a)?a:[]).slice(0,30).map(it=>{
+      const q={};DICE.forEach(s=>{const n=Math.min(MAXQ,Math.max(0,parseInt(it&&it.q&&it.q[s],10)||0));if(n)q[s]=n});
+      return{id:String((it&&it.id)||Math.random()),name:String((it&&it.name)||'Item').slice(0,24),q};
+    }).filter(it=>Object.keys(it.q).length);
+  }catch(e){return[]}
+}
+function saveItems(){try{localStorage.setItem(IKEY(),JSON.stringify(items))}catch(e){$('ierr').textContent='Não foi possível salvar os itens neste navegador.'}}
+const dlabel=q=>DICE.filter(s=>q[s]).map(s=>isCoin(s)?q[s]+(q[s]>1?' moedas':' moeda'):q[s]+'d'+s).join(' + ');
+function buildItemForm(){
+  const g=$('idice');g.textContent='';
+  DICE.forEach(s=>{
+    idq[s]=0;
+    const el=document.createElement('div');el.className='imini';el.style.setProperty('--c',COL[s]);
+    const nm=isCoin(s)?'Moeda':'d'+s;
+    el.innerHTML='<b>'+nm+'</b><button type="button" aria-label="Menos '+nm+'">−</button><span>0</span><button type="button" aria-label="Mais '+nm+'">+</button>';
+    const [m,p]=el.querySelectorAll('button'),sp=el.querySelector('span');
+    const set=v=>{idq[s]=Math.max(0,Math.min(MAXQ,v));sp.textContent=idq[s];el.classList.toggle('on',idq[s]>0);$('iadd').disabled=!DICE.some(x=>idq[x])};
+    m.onclick=()=>set(idq[s]-1);p.onclick=()=>set(idq[s]+1);el._set=set;
+    g.appendChild(el);
+  });
+}
+$('iadd').onclick=()=>{
+  const name=$('iname').value.trim();$('ierr').textContent='';
+  if(!name){$('ierr').textContent='Dê um nome ao item.';return}
+  if(items.length>=30){$('ierr').textContent='Máximo de 30 itens.';return}
+  const q={};DICE.forEach(s=>{if(idq[s])q[s]=idq[s]});
+  if(!Object.keys(q).length)return;
+  items.push({id:'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:name.slice(0,24),q});
+  saveItems();renderItems();
+  $('iname').value='';document.querySelectorAll('.imini').forEach(el=>el._set(0));
+};
+$('iname').addEventListener('keydown',ev=>{if(ev.key==='Enter')$('iadd').click()});
+function renderItems(){
+  const box=$('ilist');box.textContent='';
+  $('inone').classList.toggle('hide',items.length>0);
+  items.forEach(it=>{
+    const row=document.createElement('div');row.className='it';
+    const go=document.createElement('button');go.type='button';go.className='go';
+    const b=document.createElement('b');b.textContent=it.name;
+    const sm=document.createElement('small');sm.textContent=dlabel(it.q);
+    go.append(b,sm);go.title='Rolar '+it.name;go.onclick=()=>rollDice(it.q,it.name);
+    const x=document.createElement('button');x.type='button';x.className='x';x.textContent='✕';
+    x.setAttribute('aria-label','Remover '+it.name);x.title='Remover item';
+    x.onclick=()=>{items=items.filter(o=>o.id!==it.id);saveItems();renderItems()};
+    row.append(go,x);box.appendChild(row);
+  });
 }
 
 /* ---------- animação da rolagem ---------- */
@@ -687,7 +793,11 @@ function next(){
   const tiles=$('tiles');tiles.textContent='';
   const tots=$('tots');tots.textContent='';tots.classList.remove('show');
   types.filter(t=>!isCoin(t.s)).forEach(t=>{const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[t.s]);c.append('Total d'+t.s+': ');const b=document.createElement('b');b.textContent=t.total;c.appendChild(b);tots.appendChild(c)});
-  $('sh').textContent=String(e.name||'?').slice(0,20)+' rolou'+(e.secret?' (oculta: só você vê)':'');
+  types.filter(t=>isCoin(t.s)&&t.n>1).forEach(t=>[[1,'Caras'],[2,'Coroas']].forEach(([k,lab])=>{
+    const c=document.createElement('span');c.className='tot';c.style.setProperty('--c',COL[2]);c.append('Total de '+lab.toLowerCase()+': ');
+    const b=document.createElement('b');b.textContent=t.a.filter(v=>v===k).length;c.appendChild(b);tots.appendChild(c);
+  }));
+  $('sh').textContent=String(e.name||'?').slice(0,20)+' rolou'+(e.item?' · '+String(e.item).slice(0,24):'')+(e.secret?' (oculta: só você vê)':'');
   $('hint').textContent='';
   let pending=0;
   cur={e,done:false};
@@ -745,7 +855,7 @@ function closeStage(){
 }
 $('stage').onclick=closeStage;
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!$('stage').classList.contains('hide'))closeStage()});
-buildDice();
+buildDice();buildItemForm();renderItems();
 </script>
 </body>
 </html>
