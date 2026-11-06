@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mesa de Dados V.3</title>
+<title>Mesa de Dados</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('mesa-tema')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}</script>
@@ -161,6 +161,7 @@ button.danger{background:#e5484d;color:#fff}
 <body>
 <header id="top" class="hide">
   <div class="brand">Mesa de Dados</div>
+  <nav class="modes" id="modes"><button data-m="mesa">🎲 Mesa de Dados</button><button data-m="mh">⚔️ Monster Hunter</button></nav>
   <div class="me"><button class="meb" id="mebtn" type="button" title="Meu perfil" aria-label="Abrir meu perfil"><span id="meav"></span><span id="mename"></span></button><button class="link" id="logout">Sair</button></div>
 </header>
 <main>
@@ -277,6 +278,11 @@ button.danger{background:#e5484d;color:#fff}
     </div>
    </div>
   </section>
+  <section id="pick" class="hide">
+    <h1>Escolha seu modo</h1><p>Você pode trocar a qualquer momento pelas abas no topo.</p>
+    <div class="pickg"><button data-m="mesa">🎲<br>Mesa de Dados<br><small>Role dados com seus amigos</small></button><button data-m="mh">⚔️<br>Monster Hunter<br><small>Dungeon cooperativa infinita</small></button></div>
+  </section>
+  <section id="mh" class="hide"></section>
 </main>
 
 <button id="theme" type="button"></button>
@@ -339,7 +345,7 @@ const slug=s=>s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g
 const rand=n=>1+crypto.getRandomValues(new Uint32Array(1))[0]%n;
 const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 let view='auth',prevView='home';
-const show=id=>{view=id;['auth','home','profile','room'].forEach(s=>$(s).classList.toggle('hide',s!==id));$('top').classList.toggle('hide',id==='auth');document.querySelector('main').classList.toggle('wide',id==='room')};
+const show=id=>{view=id;['auth','pick','home','profile','room','mh'].forEach(s=>$(s).classList.toggle('hide',s!==id));$('top').classList.toggle('hide',id==='auth');document.querySelector('main').classList.toggle('wide',id==='room')};
 const JPG=/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/;
 
 function av(photo,name,cls=''){
@@ -408,7 +414,7 @@ $('go').onclick=async()=>{
   $('go').disabled=false;
 };
 $('logout').onclick=async()=>{await leave();await signOut(auth)};
-onAuthStateChanged(auth,async u=>{if(registering)return;if(!u){uid=null;cred=null;prevView='home';items=[];renderItems();unwatchLobby();show('auth');return}await start(u)});
+onAuthStateChanged(auth,async u=>{if(registering)return;if(!u){window.MH&&MH.close();uid=null;cred=null;prevView='home';items=[];renderItems();unwatchLobby();show('auth');return}await start(u)});
 
 /* ---------- lista de salas (lobby) ---------- */
 let lobby={},lobbyOff=null,sweepT=null;
@@ -465,7 +471,7 @@ async function start(u){
   const v=(await get(ref(db,'users/'+uid))).val();
   prof=v||{name:'Jogador',photo:''};
   paintMe();
-  show('home');
+  show('pick');
   /* garante que o nome desta conta esteja registrado em "logins" (reserva o nome contra trocas de outras contas) */
   (async()=>{try{
     const h=(await sha('u:'+String(prof.name).toLowerCase())).slice(0,40);
@@ -1052,6 +1058,15 @@ $('pwsave').onclick=async()=>{
 [['pfnew','pnsave'],['pfpass','pnsave'],['pfnpw','pwsave']].forEach(([i,b])=>$(i).addEventListener('keydown',ev=>{if(ev.key==='Enter')$(b).click()}));
 
 buildDice();buildItemForm();renderItems();
+/* ---- abas de modo + ponte para o Monster Hunter ---- */
+window.MHB={get uid(){return uid},get name(){return prof.name},db,ref,get,set,update,remove,onValue};
+async function goMode(m){
+  if(room)await leave();
+  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  if(m==='mh'){show('mh');window.MH&&MH.open()}else{window.MH&&MH.close();show('home')}
+}
+document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>goMode(b.dataset.m));
 </script>
+<script src="monster-hunter.js"></script>
 </body>
 </html>
