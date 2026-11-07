@@ -224,7 +224,7 @@ const SCN={combat:'Sala comum',elite:'Sala de elite',boss:'Sala do chefe',bless:
 /* qual cenário mostrar: bênção e mercado têm cenário próprio; o resto segue o tipo da sala (comum, elite ou chefe) */
 const sceneKey=()=>S.ph==='bless'?'bless':S.ph==='market'?'market':S.rt==='boss'?'boss':S.rt==='elite'?'elite':'combat';
 function render(){const el=$('mh');if(!el)return;const ae=document.activeElement,keep=ae&&ae.id==='mhtg'?ae.selectionStart:null;
- if(!code||!S){el.classList.remove('mhg');lastSc='';el.innerHTML=`<h1>⚔️ Monster Hunter</h1><p>Dungeon infinita cooperativa. Crie uma sala ou entre em uma. Até 4 jogadores.</p>
+ if(!code||!S){el.classList.remove('mhgame');lastSc='';el.innerHTML=`<h1>⚔️ Monster Hunter</h1><p>Dungeon infinita cooperativa. Crie uma sala ou entre em uma. Até 4 jogadores.</p>
 <div class="card"><h2>Seu caçador</h2><div class="mhcl">${Object.entries(CL).map(([k,c])=>`<label><input type="radio" name="mhc" value="${k}" ${k===lcls?'checked':''}><span>${c[1]} ${c[0]}</span></label>`).join('')}</div></div>
 <div class="cols"><div class="card"><h2>Criar sala</h2><label for="mhn">Nome da sala</label><input type="text" id="mhn" maxlength="24" placeholder="catacumbas" value="${esc(lname)}"><div class="row"><button data-a="create">Criar sala</button></div></div>
 <div class="card"><h2>Entrar em uma sala</h2><label for="mhj">Nome da sala</label><input type="text" id="mhj" maxlength="24" value="${esc(ljoin)}"><div class="row"><button data-a="join">Entrar</button></div></div></div>
@@ -235,12 +235,12 @@ function render(){const el=$('mh');if(!el)return;const ae=document.activeElement
 <div class="legend"><span><i class="dot g"></i>Menos da metade</span><span><i class="dot y"></i>Metade ou mais</span><span><i class="dot r"></i>Cheia</span></div>
 <p class="empty" style="font-size:.8rem;margin:8px 0 0">Salas vazias ou sem ação por 10 minutos são encerradas.</p></div>`;drawRooms();return}
  const u=B().uid,p=me();if(!p)return;const myT=S.ph==='combat'&&S.turn===u&&p.hp>0;
- el.classList.add('mhg');
+ el.classList.add('mhgame');
  const sk=sceneKey(),fade=sk!==lastSc;lastSc=sk;
  const party=`<div class="mhp">${ids().map(x=>{const q=S.p[x];return`<div class="card ${S.turn===x&&S.ph==='combat'?'mhturn':''} ${q.hp<=0?'mhdead':''}"><b>${CL[q.cls][1]} ${esc(q.name)}</b> <small>Nv ${q.lv} · 💰${q.gold}${q.df?' · 🛡️':''}</small>${bar(q.hp,q.mhp,'#e5484d')}${bar(q.mp,q.mmp,'#4f86f7')}${bar(q.xp,need(q.lv),'#e0a91c')}</div>`}).join('')}</div>`;
  const bs=Object.entries(BL).filter(([k])=>bn(k)).map(([k,b])=>`${b[0]} ×${bn(k)}`),bls=bs.length?`<p class="sel" style="margin:0">✨ ${bs.join(' · ')}</p>`:'';
  const sub=sk==='market'&&{treasure:'Tesouro',sanct:'Santuário',trap:'Armadilha'}[S.rt]?` · ${{treasure:'Tesouro',sanct:'Santuário',trap:'Armadilha'}[S.rt]}`:'';
- const pill=S.ph==='combat'?`<span class="mhpill ${myT?'me':''}">${myT?'Seu turno':'Turno de '+esc((S.p[S.turn]||{}).name||'...')}</span>`:'';
+ const pill=S.ph==='combat'?`<span class="mhpill ${myT?'mhme':''}">${myT?'Seu turno':'Turno de '+esc((S.p[S.turn]||{}).name||'...')}</span>`:'';
  const mons=S.ph==='combat'?`<div class="mhmon">${S.mon.map((m,i)=>`<button class="mhmc ${m.hp<=0?'mhdead':''} ${sel===i?'on':''}" data-a="tg" data-v="${i}"><b>${esc(m.n)}</b>${bar(m.hp,m.mhp,'#e5484d')}<small>DEF ${m.df} · ATQ ${m.atk}</small></button>`).join('')}</div>`:'';
  const scene=`<div class="mhsc s-${sk} ${fade?'fade':''}" role="img" aria-label="${SCN[sk]}"><div class="mhsl"><span class="mhpill">Andar ${S.floor} · ${SCN[sk]}${sub}</span>${pill}</div>${mons}</div>`;
  let ac='';
@@ -260,7 +260,7 @@ function render(){const el=$('mh');if(!el)return;const ae=document.activeElement
  else if(tab==='tr')h+=tradeHTML();
  else h+=`<div class="row" style="margin:0 0 12px"><button class="ghost ${how?'on':''}" data-a="how" aria-expanded="${how}">Como Funciona</button></div>${how?howHTML():''}<div class="mhg">${Object.entries(AT).map(([k,n])=>`<div class="mhi"><b>${n}: ${p.at[k]}</b><div style="margin-top:6px"><button ${p.pts?'':'disabled'} data-a="pt" data-v="${k}">+1</button></div></div>`).join('')}</div>`;
  h+='</div>';
- el.innerHTML=`<div class="bar mhtop"><div><h1>Andar ${S.floor} <small>· sala ${esc(S.title||code)}</small></h1></div><button class="ghost" data-a="leave">Sair da sala</button></div>${nb}<div class="mhgrid"><aside class="mhL">${invb}${party}${bls}</aside><section class="mhC">${scene}</section><aside class="mhR">${ac}<div class="card"><h2>Registro</h2>${S.log.slice().reverse().map(l=>`<div class="sel">${esc(l)}</div>`).join('')}</div></aside><div class="mhT">${h}</div></div>`;if(keep!==null){const x=$('mhtg');if(x){x.focus();try{x.setSelectionRange(keep,keep)}catch(e){}}}}
+ el.innerHTML=`<div class="bar mhtop"><div><h1>Andar ${S.floor} <small>· sala ${esc(S.title||code)}</small></h1></div><button class="ghost" data-a="leave">Sair da sala</button></div>${nb}<div class="mhgrid"><aside class="mhL">${invb}${party}${bls}</aside><section class="mhC">${scene}<div class="card"><h2>Registro</h2>${S.log.slice().reverse().map(l=>`<div class="sel">${esc(l)}</div>`).join('')}</div></section><aside class="mhR">${ac}</aside><div class="mhT">${h}</div></div>`;if(keep!==null){const x=$('mhtg');if(x){x.focus();try{x.setSelectionRange(keep,keep)}catch(e){}}}}
 
 const st=document.createElement('style');st.textContent=`.modes{display:flex;gap:6px}.modes button{background:none;color:var(--mut);padding:8px 12px}.modes button.on{background:var(--bg);color:var(--ink)}
 .pickg{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:640px){.pickg{grid-template-columns:1fr}}.pickg button{padding:28px 16px;font-size:1.15rem;background:var(--card);color:var(--ink);border:1px solid var(--line)}.pickg button:hover{border-color:var(--acc)}
@@ -278,22 +278,22 @@ const st=document.createElement('style');st.textContent=`.modes{display:flex;gap
 .rm .nm small{display:block;color:var(--mut);font-weight:400;font-size:.8rem;overflow:hidden;text-overflow:ellipsis}`;document.head.appendChild(st);
 
 const BG=window.MHBG||{},st2=document.createElement('style');
-st2.textContent=`#mh.mhg{max-width:none;width:min(1480px,100vw - 32px);position:relative;left:50%;transform:translateX(-50%)}
+st2.textContent=`#mh.mhgame{max-width:none;width:min(1480px,100vw - 32px);position:relative;left:50%;transform:translateX(-50%)}
 .mhtop{margin-bottom:12px}.mhtop h1{margin:0;font-size:1.3rem}
 .mhgrid{display:grid;grid-template-columns:minmax(0,280px) minmax(0,1fr) minmax(0,280px);gap:16px;align-items:start}
-.mhL,.mhR{display:flex;flex-direction:column;gap:12px;min-width:0}.mhL .card,.mhR .card{margin:0}.mhL .mhp{grid-template-columns:1fr}.mhC{min-width:0}.mhT{grid-column:1/-1;min-width:0}.mhT>.card{margin:0}
+.mhL,.mhR{display:flex;flex-direction:column;gap:12px;min-width:0}.mhL .card,.mhR .card{margin:0}.mhL .mhp{grid-template-columns:1fr}.mhC{min-width:0;display:flex;flex-direction:column;gap:12px}.mhC .card{margin:0}.mhT{grid-column:1/-1;min-width:0}.mhT>.card{margin:0}
 .mhsc{position:relative;aspect-ratio:16/9;background:#0a0812;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .mhsc::before{content:"";position:absolute;inset:0;background:center/cover no-repeat;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges;image-rendering:pixelated}
 .mhsc.fade::before{animation:mhfi .7s ease-out}@keyframes mhfi{from{opacity:0}to{opacity:1}}
 .mhsl{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:8px;z-index:2;pointer-events:none}
-.mhpill{background:rgba(10,8,18,.72);color:#f3f4f6;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:5px 12px;font-size:.82rem}.mhpill.me{border-color:var(--acc);box-shadow:0 0 10px var(--acc)}
+.mhpill{background:rgba(10,8,18,.72);color:#f3f4f6;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:5px 12px;font-size:.82rem}.mhpill.mhme{border-color:var(--acc);box-shadow:0 0 10px var(--acc)}
 .mhmon{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;z-index:2}
 .mhmc{background:rgba(10,8,18,.78);color:#f3f4f6;border:1px solid rgba(255,255,255,.18);flex:1 1 130px;min-width:120px;max-width:200px;padding:6px 10px;text-align:left}
 .mhmc b{display:block;font-size:.85rem}.mhmc small{display:block;color:#b9bdc9;font-size:.7rem;margin:3px 0 0}.mhmc.on{border-color:var(--acc);box-shadow:0 0 10px var(--acc)}
 .mhact{display:grid;gap:8px}.mhact.two{grid-template-columns:1fr 1fr}.mhact button{width:100%}
 .mhR .row{flex-direction:column;align-items:stretch}.mhR .row button{width:100%}
 @media(max-width:1100px){.mhgrid{grid-template-columns:1fr 1fr}.mhC{grid-column:1/-1;order:-1}}
-@media(max-width:640px){.mhgrid{grid-template-columns:1fr}}`+Object.entries(BG).map(([k,v])=>`.mhsc.s-${k}::before{background-image:url(${v})}`).join('');
+@media(max-width:640px){.mhgrid{grid-template-columns:1fr}.mhC{display:contents}.mhsc{order:-3}.mhR{order:-2}.mhC>.card{order:1}.mhT{order:2}.mhmon{left:6px;right:6px;bottom:6px;gap:6px}.mhmc{min-width:90px;padding:4px 8px}.mhmc small{display:none}.mhpill{font-size:.72rem;padding:3px 9px}}`+Object.entries(BG).map(([k,v])=>`.mhsc.s-${k}::before{background-image:url(${v})}`).join('');
 document.head.appendChild(st2);
 
 window.MH={open(){on=true;sweep();janitor();clearInterval(jT);jT=setInterval(janitor,60000);const el=$('mh');if(el&&!el._b){el._b=1;el.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a])A[b.dataset.a](b.dataset.v)});
