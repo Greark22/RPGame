@@ -1059,7 +1059,7 @@ $('pwsave').onclick=async()=>{
 
 buildDice();buildItemForm();renderItems();
 /* ---- abas de modo + ponte para o Monster Hunter ---- */
-window.MHB={get uid(){return uid},get name(){return prof.name},db,ref,get,set,update,remove,onValue};
+window.MHB={get uid(){return uid},get name(){return prof.name},db,ref,get,set,update,remove,onValue,onDisconnect};
 async function goMode(m){
   if(room)await leave();
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
