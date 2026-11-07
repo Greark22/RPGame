@@ -17,7 +17,7 @@ const ST0=()=>({dmg:0,rec:0,heal:0,crit:0,kills:0,gold:0,spent:0,miss:0,dodge:0,
  PH={combat:'Em combate',market:'No mercado',loot:'Dividindo o loot',bless:'Escolhendo bênção'};
 const IDLE=600000,STALE=90000,need=l=>Math.round(30*Math.pow(l,1.7)),
  ATKG=1.1,/* crescimento do ataque dos monstros por andar */ MINDMG=.3;/* a defesa nunca reduz mais que 70% do dano */
-let code=null,S=null,L=null,off=null,hbT=null,sel=0,tab='inv',note='',lerr='',conOff=null,jT=null,how=false,rooms=null,rerr='',lq='',lname='',ljoin='',lcls='guerreiro',lT=null,on=false,busy=false;
+let code=null,S=null,L=null,off=null,hbT=null,sel=0,tab='inv',note='',lerr='',conOff=null,jT=null,how=false,rooms=null,rerr='',lq='',lname='',ljoin='',lcls='guerreiro',lT=null,on=false,busy=false,tgv=null,gT=null;
 const bn=k=>(S&&S.bl&&+S.bl[k])||0,hm=()=>1+.15*bn('vida');/* nível de cada bênção (acumulativa) e multiplicador de HP */
 
 const rf=p=>B().ref(B().db,'mh/'+code+(p?'/'+p:'')),upd=o=>B().update(rf(),o),commit=()=>{S.ts=now();return B().set(rf(),S)};
@@ -31,6 +31,33 @@ function sweep(){try{for(const k of Object.keys(localStorage))if(k.startsWith('m
 const newP=c=>({name:B().name,cls:c,lv:1,xp:0,hp:CL[c][2],mhp:CL[c][2],mp:CL[c][3],mmp:CL[c][3],at:{for:0,int:0,fe:0,vit:0,des:0,sor:0},pts:0,gold:20,atk:0,mag:0,def:0,crit:0,hb:now(),df:false,stat:ST0()});
 const roll=n=>{let k=1+Math.floor(n/5)+bn('destino'),m=0;for(;k>0;k--)m=Math.max(m,d(20));return m};
 const log=t=>{S.log.push(t);S.log=S.log.slice(-8)};
+
+/* ---- troca entre jogadores ----
+   Estado compartilhado: mh/<sala>/tr/<id> = {a,b,acc,st:'open'|'done',o:{<uid>:{g,i:[itens]}},ok:{<uid>:assinatura},ap:{<uid>:true}}
+   - cada lado só edita a própria oferta; qualquer mudança apaga as confirmações
+   - "ok" guarda a assinatura das duas ofertas: só vale se ainda for igual à oferta atual
+   - com os dois ok, UM executor (a, ou b se a estiver ausente) move o ouro e marca st:'done'
+   - cada navegador então tira dos seus itens o que deu e põe o que recebeu (L.trd evita aplicar duas vezes) */
+const trs=()=>Object.values(S.tr||{}),mine=t=>t.a===B().uid||t.b===B().uid,oth=t=>t.a===B().uid?t.b:t.a,
+ myTr=()=>trs().find(t=>t.st!=='done'&&mine(t)),
+ offer=(t,u)=>{const o=(t.o&&t.o[u])||{};return{g:+o.g||0,i:o.i?Object.values(o.i):[]}},
+ sg=t=>JSON.stringify([t.a,offer(t,t.a).g,offer(t,t.a).i.map(x=>x.id).sort(),t.b,offer(t,t.b).g,offer(t,t.b).i.map(x=>x.id).sort()]),
+ isOk=(t,u)=>!!t.ok&&t.ok[u]===sg(t),
+ locked=id=>trs().some(t=>mine(t)&&(t.st!=='done'||!(L.trd||[]).includes(t.id))&&offer(t,B().uid).i.some(x=>x.id===id)),
+ hbOk=x=>!!S.p[x]&&now()-S.p[x].hb<STALE,tfin=new Set(),
+ trBadge=()=>{const t=myTr();return t?(t.b===B().uid&&!t.acc?' (convite)':' 🤝'):''};
+function fin(t){if(tfin.has(t.id))return;const a=S.p[t.a],b=S.p[t.b];if(!a||!b)return upd({['tr/'+t.id]:null});
+ const oa=offer(t,t.a),ob=offer(t,t.b);
+ if(oa.g>a.gold||ob.g>b.gold){log('Troca não concluída: ouro insuficiente.');return upd({['tr/'+t.id+'/ok']:null,log:S.log})}
+ tfin.add(t.id);log(`${a.name} e ${b.name} concluíram uma troca.`);
+ upd({['tr/'+t.id+'/st']:'done',['p/'+t.a+'/gold']:a.gold-oa.g+ob.g,['p/'+t.b+'/gold']:b.gold-ob.g+oa.g,log:S.log,ts:now()})}
+function trade(){const u=B().uid,T=trs();
+ T.filter(t=>t.st==='done'&&mine(t)&&!(L.trd||[]).includes(t.id)).forEach(t=>{const give=offer(t,u).i.map(x=>x.id);
+  L.inv=L.inv.filter(x=>!give.includes(x.id));offer(t,oth(t)).i.forEach(i=>{if(!L.inv.some(x=>x.id===i.id))L.inv.push(i)});
+  L.trd=[...(L.trd||[]),t.id].slice(-20);sv();upd({[`tr/${t.id}/ap/${u}`]:true})});
+ const ex=t=>hbOk(t.a)?t.a:t.b;
+ T.filter(t=>t.st==='open'&&t.acc&&isOk(t,t.a)&&isOk(t,t.b)&&ex(t)===u).forEach(fin);
+ T.filter(t=>t.st==='done'&&t.ap[t.a]&&t.ap[t.b]&&ex(t)===u).forEach(t=>upd({['tr/'+t.id]:null}))}
 
 /* ---- itens ---- */
 function mk(f,minR,luck){const w=RAR.map((a,i)=>a[2]*(i>1?1+luck*.1:1)),tot=w.reduce((a,b)=>a+b);let x=Math.random()*tot,r=0;for(;r<6&&x>w[r];r++)x-=w[r];r=Math.max(r,minR);
@@ -95,13 +122,14 @@ async function enterRoom(name,cls,create){if(busy)return;lerr='';const c=slug(na
   else if(!s.p[u])await B().update(rf(),{['p/'+u]:newP(cls)});
   watch()}catch(e){code=null;lerr=typeof e==='string'?e:'Erro: '+(e.code||e.message);render()}finally{busy=false}}
 function watch(){stopLobby();off=B().onValue(rf(),sn=>{S=sn.val();if(!S){leaveRoom('A sala foi fechada.');return}
-  S.mon=S.mon||[];S.log=S.log||[];S.bl=S.bl||{};S.run=S.run||{mon:0,boss:0,gold:0,best:''};S.p=S.p||{};
+  S.mon=S.mon||[];S.log=S.log||[];S.bl=S.bl||{};S.run=S.run||{mon:0,boss:0,gold:0,best:''};S.p=S.p||{};S.tr=S.tr||{};Object.values(S.tr).forEach(t=>{t.o=t.o||{};t.ok=t.ok||{};t.ap=t.ap||{}});
   const l=S.loot;if(l&&l.win&&l.win.u===B().uid&&L.got!==l.id){L.got=l.id;if(L.inv.length<20){L.inv.push(l.it);L.found=(L.found||0)+1}sv()}
-  if(l&&S.ph==='loot'&&ids()[0]===B().uid)resolveLoot();render()});
+  if(l&&S.ph==='loot'&&ids()[0]===B().uid)resolveLoot();trade();render()});
  armPresence();hbT=setInterval(tick,15000);tick()}
 function tick(){if(!S||!code)return;upd({['p/'+B().uid+'/hb']:now()});
  if(now()-S.ts>IDLE)return closeRoom();
- if(S.ph==='combat'){const t=S.p[S.turn];if((!t||now()-t.hb>STALE||t.hp<=0)&&alive()[0]===B().uid){adv();commit()}}}
+ if(S.ph==='combat'){const t=S.p[S.turn];if((!t||now()-t.hb>STALE||t.hp<=0)&&alive()[0]===B().uid){adv();commit()}}
+ trs().filter(t=>t.st!=='done').forEach(t=>{if((!hbOk(t.a)||!hbOk(t.b)||now()-(t.ts||0)>600000)&&ids()[0]===B().uid)upd({['tr/'+t.id]:null})})}
 async function closeRoom(){const c=code;try{await B().remove(rf())}catch(e){}clearLocal(c);leaveRoom('A sala foi fechada por inatividade.')}
 /* presença: ao cair a conexão/fechar a aba o servidor zera o batimento do jogador (ele vira "ausente" na hora) */
 function armPresence(){conOff=B().onValue(B().ref(B().db,'.info/connected'),sn=>{if(sn.val()!==true||!code)return;
@@ -112,7 +140,7 @@ async function janitor(){try{const all=(await B().get(B().ref(B().db,'mh'))).val
   const act=Object.values(s.p||{}).some(q=>q&&now()-q.hb<STALE*2);
   if(!act||now()-s.ts>IDLE){await B().remove(B().ref(B().db,'mh/'+c));clearLocal(c)}}}catch(e){}}
 async function leaveRoom(msg){const c=code,u=B().uid,gone=typeof msg==='string';if(off)off();off=null;if(conOff)conOff();conOff=null;clearInterval(hbT);
- if(c&&!gone&&S){try{await B().onDisconnect(B().ref(B().db,`mh/${c}/p/${u}/hb`)).cancel();await B().remove(B().ref(B().db,`mh/${c}/p/${u}`));
+ if(c&&!gone&&S){try{await Promise.all(trs().filter(t=>t.st!=='done'&&mine(t)).map(t=>B().remove(B().ref(B().db,`mh/${c}/tr/${t.id}`))));await B().onDisconnect(B().ref(B().db,`mh/${c}/p/${u}/hb`)).cancel();await B().remove(B().ref(B().db,`mh/${c}/p/${u}`));
   const p=(await B().get(B().ref(B().db,`mh/${c}/p`))).val()||{};
   if(!Object.values(p).some(q=>q&&now()-q.hb<STALE*2)){await B().remove(B().ref(B().db,'mh/'+c));clearLocal(c)}}catch(e){}}
  if(gone&&c)clearLocal(c);
@@ -122,7 +150,7 @@ async function leaveRoom(msg){const c=code,u=B().uid,gone=typeof msg==='string';
 const A={
  create:()=>enterRoom($('mhn').value,lcls,true),
  join:()=>enterRoom($('mhj').value,lcls,false),jr:v=>enterRoom(v,lcls,false),rf:()=>loadRooms(),how:()=>{how=!how;render()},
- leave:()=>leaveRoom(),atk:()=>act('atk'),sk:()=>act('sk'),df:()=>act('df'),tg:v=>{sel=+v;render()},tab:v=>{tab=v;render()},pot:usePot,
+ leave:()=>leaveRoom(),atk:()=>act('atk'),sk:()=>act('sk'),df:()=>act('df'),tg:v=>{sel=+v;render()},tab:v=>{tab=v;note='';tgv=null;render()},pot:usePot,
  vote:v=>upd({['loot/v/'+B().uid]:v}),
  bless:k=>{if(S.ph!=='bless'||!BL[k])return;const n=bn(k),f=(1+.15*(n+1))/(1+.15*n);S.bl[k]=n+1;
   if(k==='vida')Object.values(S.p).forEach(p=>{const m=Math.round(p.mhp*f);p.hp+=m-p.mhp;p.mhp=m});
@@ -130,11 +158,27 @@ const A={
 skipb:()=>{if(S.ph!=='bless')return;log('O grupo seguiu sem escolher bênção.');S.ph='market';commit()},
  buy:k=>{const p=me(),o=POT[k];if(p.gold<o[2]){note='Ouro insuficiente.';return render()}note='';L.pot[k]++;sv();upd({['p/'+B().uid+'/gold']:p.gold-o[2],['p/'+B().uid+'/stat/spent']:((p.stat&&p.stat.spent)||0)+o[2]})},
  next:()=>{if(S.ph==='market'){enter();commit()}},
- eq:id=>{const i=L.inv.find(x=>x.id===id);if(!i)return;L.inv=L.inv.filter(x=>x!==i);let old;
+ eq:id=>{const i=L.inv.find(x=>x.id===id);if(!i)return;if(locked(id)){note='Item na oferta de troca.';return render()}L.inv=L.inv.filter(x=>x!==i);let old;
   if(i.t==='acc'){if(L.eq.acc.length>=3)old=L.eq.acc.shift();L.eq.acc.push(i)}else{old=L.eq[i.t];L.eq[i.t]=i}if(old)L.inv.push(old);sv();gearSync()},
  un:v=>{const[t,x]=v.split(':');let i;if(t==='acc')i=L.eq.acc.splice(+x,1)[0];else{i=L.eq[t];L.eq[t]=null}if(i){if(L.inv.length>=20){L.eq[t==='acc'?'acc':t]=t==='acc'?[...L.eq.acc,i]:i;note='Inventário cheio.';return render()}L.inv.push(i);sv();gearSync()}},
- sell:id=>{const i=L.inv.find(x=>x.id===id);if(!i)return;L.inv=L.inv.filter(x=>x!==i);sv();upd({['p/'+B().uid+'/gold']:me().gold+Math.round(6*(i.r+1)*(1+S.floor*.5))})},
- drop:id=>{L.inv=L.inv.filter(x=>x.id!==id);sv();render()},
+ sell:id=>{const i=L.inv.find(x=>x.id===id);if(!i)return;if(locked(id)){note='Item na oferta de troca.';return render()}L.inv=L.inv.filter(x=>x!==i);sv();upd({['p/'+B().uid+'/gold']:me().gold+Math.round(6*(i.r+1)*(1+S.floor*.5))})},
+ drop:id=>{if(locked(id)){note='Item na oferta de troca.';return render()}L.inv=L.inv.filter(x=>x.id!==id);sv();render()},
+ tnew:v=>{const u=B().uid;if(myTr()){note='Você já está em uma troca.';return render()}
+  if(!S.p[v]||trs().some(t=>t.st!=='done'&&(t.a===v||t.b===v))){note='Esse jogador está em outra troca.';return render()}
+  note='';const id=now()+'_'+d(9999);upd({['tr/'+id]:{id,a:u,b:v,ts:now(),st:'open',acc:false,o:{[u]:{g:0},[v]:{g:0}}},ts:now()})},
+ tacc:()=>{const t=myTr();if(t&&t.b===B().uid&&!t.acc)upd({[`tr/${t.id}/acc`]:true,[`tr/${t.id}/ts`]:now(),ts:now()})},
+ tcan:()=>{const t=myTr();if(!t)return;note='';tgv=null;upd({['tr/'+t.id]:null})},
+ tog:id=>{const t=myTr(),u=B().uid;if(!t||!t.acc)return;const i=L.inv.find(x=>x.id===id);if(!i)return;
+  const cur=offer(t,u).i,nx=cur.some(x=>x.id===id)?cur.filter(x=>x.id!==id):[...cur,i];
+  upd({[`tr/${t.id}/o/${u}/i`]:nx.length?nx:null,[`tr/${t.id}/ok`]:null,[`tr/${t.id}/ts`]:now(),ts:now()})},
+ tgold:v=>{clearTimeout(gT);const t=myTr(),u=B().uid;tgv=null;if(!t||!t.acc)return;const g=Math.max(0,Math.min(me().gold,Math.floor(+v)||0));
+  if(g===offer(t,u).g)return render();upd({[`tr/${t.id}/o/${u}/g`]:g,[`tr/${t.id}/ok`]:null,[`tr/${t.id}/ts`]:now(),ts:now()})},
+ tok:()=>{const t=myTr(),u=B().uid;if(!t||!t.acc)return;const a=offer(t,u),b=offer(t,oth(t));
+  if(!a.g&&!a.i.length&&!b.g&&!b.i.length){note='Ofereça algo para trocar.';return render()}
+  if(a.g>me().gold){note='Você não tem todo esse ouro.';return render()}
+  if(L.inv.length-a.i.length+b.i.length>20){note='Sua mochila não comporta os itens que você receberia (máx. 20).';return render()}
+  note='';upd({[`tr/${t.id}/ok/${u}`]:sg(t)})},
+ tun:()=>{const t=myTr();if(t)upd({[`tr/${t.id}/ok/${B().uid}`]:null})},
  pt:k=>{const p=me();if(p.pts<1)return;const u='p/'+B().uid+'/',o={[u+'pts']:p.pts-1,[u+'at/'+k]:p.at[k]+1};if(k==='vit'){const v=Math.round(10*hm());o[u+'mhp']=p.mhp+v;o[u+'hp']=p.hp+v}upd(o)}};
 
 /* ---- lista de salas (lobby) ---- */
@@ -160,9 +204,21 @@ function statsHTML(){const p=me(),s=p.stat||{},t=stT(),U=B().uid,ps=Object.entri
  <h2 style="margin-top:14px">Grupo</h2><div class="mhg">${[sc('Andar atual',nf(S.floor)),sc('Dano causado',nf(t.dmg)),sc('Dano recebido',nf(t.rec)),sc('Cura total',nf(t.heal)),sc('Críticos',nf(t.crit)),sc('Monstros',nf(S.run.mon)),sc('Chefes',nf(S.run.boss)),sc('Ouro obtido',nf(S.run.gold)),sc('Melhor item',esc(S.run.best||'—'),'',1)].join('')}</div>
  <h2 style="margin-top:14px">Jogadores</h2><div style="overflow-x:auto"><div class="mhtb">${['Jogador','Dano','Recebido','Cura','Abates','Ouro'].map(h=>`<span class="h">${h}</span>`).join('')}${ps.map(([u,q])=>{const z=q.stat||{};return`<span class="${u===U?'me':''}">${CL[q.cls]?CL[q.cls][1]+' ':''}${esc(q.name)}${u===U?' (você)':''}${now()-q.hb>=STALE?' · ausente':''}</span><span>${nf(z.dmg)}</span><span>${nf(z.rec)}</span><span>${nf(z.heal)}</span><span>${nf(z.kills)}</span><span>${nf(z.gold)}</span>`}).join('')}</div></div>`}
 
+function tradeHTML(){const u=B().uid,t=myTr(),p=me();
+ if(!t){const os=ids().filter(x=>x!==u);
+  return`<h2>🤝 Troca entre jogadores</h2><p class="sel" style="margin:0 0 12px">Troque itens e ouro com outro jogador da sala. A troca só acontece quando os dois apertam <b>Concluir troca</b>, e qualquer mudança nas ofertas desfaz as confirmações. Também vale trocar quando só um lado oferece algo.</p>${os.length?`<div class="mhg">${os.map(x=>{const q=S.p[x],oc=trs().some(r=>r.st!=='done'&&(r.a===x||r.b===x));return`<div class="mhi"><b>${CL[q.cls][1]} ${esc(q.name)}</b><small>Nv ${q.lv} · 💰${nf(q.gold)}</small><div><button data-a="tnew" data-v="${x}" ${oc?'disabled':''}>${oc?'Em outra troca':'Propor troca'}</button></div></div>`}).join('')}</div>`:'<p class="sel">Nenhum outro jogador ativo na sala.</p>'}`}
+ const o=oth(t),q=S.p[o]||{name:'?',cls:'guerreiro'},nm=esc(q.name);
+ if(!t.acc)return`<h2>🤝 Troca com ${nm}</h2>`+(t.b===u?`<p class="sel">${nm} quer trocar com você.</p><div class="row"><button data-a="tacc">Aceitar</button><button class="ghost" data-a="tcan">Recusar</button></div>`:`<p class="sel">Aguardando ${nm} aceitar o convite…</p><div class="row"><button class="ghost" data-a="tcan">Cancelar convite</button></div>`);
+ const a=offer(t,u),b=offer(t,o),mo=isOk(t,u),to=isOk(t,o),list=x=>x.i.length?x.i.map(i=>iCard(i)).join(''):'<span class="sel">Nenhum item</span>';
+ return`<h2>🤝 Troca com ${CL[q.cls]?CL[q.cls][1]+' ':''}${nm}</h2>
+ <div class="cols"><div class="mhi" style="${mo?'--c:#4cb782':''}"><b>Sua oferta${mo?' · ✔ confirmada':''}</b><label for="mhtg">Ouro (você tem 💰${nf(p.gold)})</label><input type="text" id="mhtg" inputmode="numeric" maxlength="7" autocomplete="off" value="${tgv!==null?esc(tgv):a.g}"><div class="mhg" style="margin-top:10px">${list(a)}</div></div>
+ <div class="mhi" style="${to?'--c:#4cb782':''}"><b>Oferta de ${nm}${to?' · ✔ confirmada':' · aguardando'}</b><small>Ouro: 💰${nf(b.g)}</small><div class="mhg">${list(b)}</div></div></div>
+ <div class="row"><button data-a="${mo?'tun':'tok'}">${mo?'Desfazer confirmação':'Concluir troca'}</button><button class="ghost" data-a="tcan">Cancelar troca</button>${mo&&!to?`<span class="sel">Aguardando ${nm} concluir…</span>`:''}</div>
+ <h2 style="margin-top:14px">Sua mochila — escolha o que oferecer</h2><div class="mhg">${L.inv.map(i=>{const on=a.i.some(x=>x.id===i.id);return iCard(i,`<button class="${on?'ghost':''}" data-a="tog" data-v="${i.id}">${on?'Retirar da oferta':'Oferecer'}</button>`)}).join('')||'<span class="sel">Mochila vazia.</span>'}</div>`}
+
 /* ---- render ---- */
 const bar=(v,m,c)=>`<div class="mhb"><i style="width:${Math.max(0,Math.min(100,v/m*100))}%;background:${c}"></i><span>${v}/${m}</span></div>`;
-function render(){const el=$('mh');if(!el)return;
+function render(){const el=$('mh');if(!el)return;const ae=document.activeElement,keep=ae&&ae.id==='mhtg'?ae.selectionStart:null;
  if(!code||!S){el.innerHTML=`<h1>⚔️ Monster Hunter</h1><p>Dungeon infinita cooperativa. Crie uma sala ou entre em uma. Até 4 jogadores.</p>
 <div class="card"><h2>Seu caçador</h2><div class="mhcl">${Object.entries(CL).map(([k,c])=>`<label><input type="radio" name="mhc" value="${k}" ${k===lcls?'checked':''}><span>${c[1]} ${c[0]}</span></label>`).join('')}</div></div>
 <div class="cols"><div class="card"><h2>Criar sala</h2><label for="mhn">Nome da sala</label><input type="text" id="mhn" maxlength="24" placeholder="catacumbas" value="${esc(lname)}"><div class="row"><button data-a="create">Criar sala</button></div></div>
@@ -185,14 +241,16 @@ function render(){const el=$('mh');if(!el)return;
  if(S.ph==='market')h+=`<div class="card"><h2>🏕️ Área segura — mercado</h2><div class="row">${Object.entries(POT).map(([k,o])=>`<button class="ghost" data-a="buy" data-v="${k}">${o[0]} · 💰${o[2]}</button>`).join('')}</div><div class="row"><button data-a="next">Descer ao andar ${S.floor+1} ▶</button></div></div>`;
  if(S.ph==='over'){const t=Object.values(S.p).reduce((a,q)=>{for(const k in q.stat)a[k]=(a[k]||0)+q.stat[k];return a},{});
   h+=`<div class="card"><h2>☠️ Fim da run — Andar ${S.floor}</h2><p>Dano causado: ${t.dmg} · Dano recebido: ${t.rec} · Cura: ${t.heal} · Críticos: ${t.crit}<br>Monstros: ${S.run.mon} · Chefes: ${S.run.boss} · Ouro obtido: ${S.run.gold}<br>Melhor item: ${esc(S.run.best||'—')}</p><button data-a="leave">Voltar</button></div>`}
+ {const iv=trs().find(t=>t.st!=='done'&&t.b===u&&!t.acc);if(iv&&tab!=='tr'&&S.p[iv.a])h+=`<div class="card mhturn"><b>🤝 ${esc(S.p[iv.a].name)} quer trocar com você</b><div class="row"><button data-a="tab" data-v="tr">Ver convite</button><button class="ghost" data-a="tcan">Recusar</button></div></div>`}
  if(note)h+=`<p class="err">${esc(note)}</p>`;
- h+=`<div class="card"><div class="tabs"><button class="${tab==='inv'?'on':''}" data-a="tab" data-v="inv">Inventário ${L.inv.length}/20</button><button class="${tab==='at'?'on':''}" data-a="tab" data-v="at">Atributos${p.pts?' ('+p.pts+' pts)':''}</button><button class="${tab==='st'?'on':''}" data-a="tab" data-v="st">Estatísticas</button></div>`;
+ h+=`<div class="card"><div class="tabs"><button class="${tab==='inv'?'on':''}" data-a="tab" data-v="inv">Inventário ${L.inv.length}/20</button><button class="${tab==='at'?'on':''}" data-a="tab" data-v="at">Atributos${p.pts?' ('+p.pts+' pts)':''}</button><button class="${tab==='st'?'on':''}" data-a="tab" data-v="st">Estatísticas</button><button class="${tab==='tr'?'on':''}" data-a="tab" data-v="tr">Troca${trBadge()}</button></div>`;
  if(tab==='inv'){const E=[['arma',L.eq.arma],['escudo',L.eq.escudo],...[0,1,2].map(i=>['acc:'+i,L.eq.acc[i]])];
-  h+=`<h2>Equipado</h2><div class="mhg">${E.map(([s,i])=>i?iCard(i,`<button class="ghost" data-a="un" data-v="${s==='arma'||s==='escudo'?s+':0':s}">Remover</button>`):`<div class="mhi mhe">${s.startsWith('acc')?'Acessório':s}</div>`).join('')}</div><h2 style="margin-top:14px">Mochila</h2><div class="mhg">${L.inv.map(i=>iCard(i,`<button data-a="eq" data-v="${i.id}">Equipar</button><button class="ghost" data-a="sell" data-v="${i.id}">Vender</button><button class="link" data-a="drop" data-v="${i.id}">Descartar</button>`)).join('')||'<span class="sel">Vazia.</span>'}</div>`}
+  h+=`<h2>Equipado</h2><div class="mhg">${E.map(([s,i])=>i?iCard(i,`<button class="ghost" data-a="un" data-v="${s==='arma'||s==='escudo'?s+':0':s}">Remover</button>`):`<div class="mhi mhe">${s.startsWith('acc')?'Acessório':s}</div>`).join('')}</div><h2 style="margin-top:14px">Mochila</h2><div class="mhg">${L.inv.map(i=>iCard(i,locked(i.id)?'<small>🤝 Na oferta de troca</small>':`<button data-a="eq" data-v="${i.id}">Equipar</button><button class="ghost" data-a="sell" data-v="${i.id}">Vender</button><button class="link" data-a="drop" data-v="${i.id}">Descartar</button>`)).join('')||'<span class="sel">Vazia.</span>'}</div>`}
  else if(tab==='st')h+=statsHTML();
+ else if(tab==='tr')h+=tradeHTML();
  else h+=`<div class="row" style="margin:0 0 12px"><button class="ghost ${how?'on':''}" data-a="how" aria-expanded="${how}">Como Funciona</button></div>${how?howHTML():''}<div class="mhg">${Object.entries(AT).map(([k,n])=>`<div class="mhi"><b>${n}: ${p.at[k]}</b><div style="margin-top:6px"><button ${p.pts?'':'disabled'} data-a="pt" data-v="${k}">+1</button></div></div>`).join('')}</div>`;
  h+=`</div><div class="card"><h2>Registro</h2>${S.log.slice().reverse().map(l=>`<div class="sel">${esc(l)}</div>`).join('')}</div>`;
- el.innerHTML=h}
+ el.innerHTML=h;if(keep!==null){const x=$('mhtg');if(x){x.focus();try{x.setSelectionRange(keep,keep)}catch(e){}}}}
 
 const st=document.createElement('style');st.textContent=`.modes{display:flex;gap:6px}.modes button{background:none;color:var(--mut);padding:8px 12px}.modes button.on{background:var(--bg);color:var(--ink)}
 .pickg{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:640px){.pickg{grid-template-columns:1fr}}.pickg button{padding:28px 16px;font-size:1.15rem;background:var(--card);color:var(--ink);border:1px solid var(--line)}.pickg button:hover{border-color:var(--acc)}
@@ -210,8 +268,8 @@ const st=document.createElement('style');st.textContent=`.modes{display:flex;gap
 .rm .nm small{display:block;color:var(--mut);font-weight:400;font-size:.8rem;overflow:hidden;text-overflow:ellipsis}`;document.head.appendChild(st);
 
 window.MH={open(){on=true;sweep();janitor();clearInterval(jT);jT=setInterval(janitor,60000);const el=$('mh');if(el&&!el._b){el._b=1;el.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a])A[b.dataset.a](b.dataset.v)});
- el.addEventListener('input',e=>{const x=e.target;if(x.id==='mhn')lname=x.value;else if(x.id==='mhj')ljoin=x.value;else if(x.id==='mhq'){lq=x.value;drawRooms()}});
- el.addEventListener('change',e=>{if(e.target.name==='mhc')lcls=e.target.value});
+ el.addEventListener('input',e=>{const x=e.target;if(x.id==='mhn')lname=x.value;else if(x.id==='mhj')ljoin=x.value;else if(x.id==='mhq'){lq=x.value;drawRooms()}else if(x.id==='mhtg'){tgv=x.value.replace(/\D/g,'');clearTimeout(gT);gT=setTimeout(()=>A.tgold(tgv),700)}});
+ el.addEventListener('change',e=>{if(e.target.name==='mhc')lcls=e.target.value;else if(e.target.id==='mhtg')A.tgold(e.target.value.replace(/\D/g,''))});
  el.addEventListener('keydown',e=>{if(e.key==='Enter'){if(e.target.id==='mhn')A.create();else if(e.target.id==='mhj')A.join()}})}
  render();if(!code)startLobby()},close(){on=false;stopLobby();clearInterval(jT);jT=null;if(code)leaveRoom()}};
 })();
