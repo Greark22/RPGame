@@ -1,4 +1,4 @@
-/* Monster Hunter — modo cooperativo (até 4 jogadores). Arquivo separado do index.html.
+/* Monster Hunter — moo cooperativo (até 4 jogadores). Arquivo separado do index.html.
    Inventário/itens/equipamentos ficam neste navegador (chave mh:<sala>:<uid>), amarrados ao id da sala (rid): sala nova = itens zerados. Também são apagados quando a sala fecha.
    O estado compartilhado da sala usa o nó efêmero "mh/<sala>" do Realtime Database já conectado (apagado ao fechar). */
 (()=>{'use strict';
