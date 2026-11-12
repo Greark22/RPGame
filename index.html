@@ -156,6 +156,36 @@ button.danger{background:#e5484d;color:#fff}
 .prof{max-width:520px}
 .prof .card p{margin:0 0 4px;font-size:.9rem}
 .prof .row.c{justify-content:center}
+
+/* ---------- AJUSTES SOMENTE PARA CELULAR ---------- */
+@media(max-width:640px){
+  html,body{overflow-x:hidden}
+  body{font-size:15px}
+  header{flex-wrap:wrap;gap:6px 8px;padding:8px 10px}
+  .brand{display:none}
+  header .modes{order:1;flex:1 1 auto;min-width:0;gap:4px}
+  header .modes button{flex:1 1 0;min-width:0;padding:7px 6px;font-size:.82rem;line-height:1.2;white-space:nowrap}
+  header .me{order:2;gap:2px;flex:none}
+  .meb{padding:2px 8px 2px 2px;gap:6px}
+  .meb #mename{max-width:70px;font-size:.85rem}
+  .av{width:30px;height:30px}
+  header .link{padding:4px;font-size:.85rem}
+  main{padding:14px 10px 120px}
+  h1{font-size:1.35rem}
+  .card{padding:14px;margin-bottom:12px}
+  button{padding:10px 14px}
+  .bar{flex-wrap:wrap}
+  .dice{grid-template-columns:repeat(3,1fr);gap:8px}
+  .die b{font-size:1.1rem}
+  .ctl button{width:28px;height:28px}
+  .pill{font-size:.85rem}
+  #theme,#fs{right:8px;padding:6px 10px;font-size:.75rem;gap:5px;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:.92}
+  #theme{bottom:8px}
+  #fs{bottom:46px}
+  #stage{padding:12px}
+  .dt{--w:clamp(86px,27vw,130px)}
+  .sh{font-size:1.1rem}
+}
 </style>
 </head>
 <body>
