@@ -73,15 +73,15 @@ function gearSync(){const g={atk:0,mag:0,def:0,hp:0,crit:0};[L.eq.arma,L.eq.escu
  upd({[u+'atk']:g.atk,[u+'mag']:g.mag,[u+'def']:g.def,[u+'crit']:g.crit,[u+'mhp']:m,[u+'hp']:Math.min(p.hp,m)})}
 
 /* ---- andares ---- */
-function enter(){S.floor++;const f=S.floor;S.mon=[];S.loot=S.loot||null;Object.values(S.p).forEach(p=>{if(p.hp<=0)p.hp=Math.round(p.mhp*.5);p.mp=p.mmp});
+function enter(){S.floor++;const f=S.floor;S.mon=[];S.loot=S.loot||null;Object.values(S.p).forEach(p=>{if(p.hp>0)p.mp=p.mmp});
  const x=Math.random(),rt=f%5===0?'boss':x<.2?'elite':x<.3?'treasure':x<.4?'sanct':x<.47?'trap':x<.55?'merchant':'combat';S.rt=rt;
  if(['combat','elite','boss'].includes(rt)){const n=rt==='boss'?1:rt==='elite'?d(2):d(3),sc=.7+.3*Math.max(1,ids().length);
   for(let i=0;i<n;i++){const k=rt==='boss'?6:rt==='elite'?2.2:1,hp=Math.round(30*Math.pow(1.1,f-1)*k*sc);
    S.mon.push({n:rt==='boss'?BOS[(f/5-1)%5|0]:R(rt==='elite'?ELI:MON),hp,mhp:hp,atk:Math.round(6*Math.pow(ATKG,f-1)*(rt==='boss'?2:rt==='elite'?1.5:1)),df:6+Math.floor(f*.9),xp:Math.round((12+f*3)*Math.pow(1.1,f-1)*k),g:Math.round((8+f*4)*Math.pow(1.15,f-1)*k),boss:rt==='boss'})}
   S.ph='combat';S.turn=alive()[0];log(`Andar ${f}: ${rt==='boss'?'CHEFE!':rt==='elite'?'sala de elite':'combate'} — ${S.mon.map(m=>m.n).join(', ')}`)}
  else{const al=ids();if(rt==='treasure'){const g=Math.round(40*Math.pow(1.15,f-1));al.forEach(u=>{S.p[u].gold+=g;bump(S.p[u],'gold',g)});S.run.gold+=g*al.length;log(`Tesouro perdido! +${g} ouro para todos.`)}
-  else if(rt==='sanct'){al.forEach(u=>S.p[u].hp=Math.min(S.p[u].mhp,S.p[u].hp+Math.round(S.p[u].mhp*.4)));log('Santuário: o grupo recupera 40% do HP.')}
-  else if(rt==='trap'){al.forEach(u=>{const p=S.p[u];p.hp=Math.max(1,p.hp-Math.round(p.mhp*.12))});log('Armadilha! Todos perdem 12% do HP.')}
+  else if(rt==='sanct'){alive().forEach(u=>S.p[u].hp=Math.min(S.p[u].mhp,S.p[u].hp+Math.round(S.p[u].mhp*.4)));log('Santuário: o grupo recupera 40% do HP.')}
+  else if(rt==='trap'){alive().forEach(u=>{const p=S.p[u];p.hp=Math.max(1,p.hp-Math.round(p.mhp*.12))});log('Armadilha! Todos perdem 12% do HP.')}
   else log('Comerciante misterioso: aproveite o mercado.');S.ph='market'}}
 const after=()=>{S.ph=S.mon[0]&&S.mon[0].boss?'bless':'market'};
 function win(){const f=S.floor,al=alive();let xp=0,g=0;S.mon.forEach(m=>{xp+=m.xp;g+=m.g;if(m.boss)S.run.boss++});S.run.mon+=S.mon.length;g=Math.round(g*(1+.2*bn('fortuna')));
@@ -95,7 +95,7 @@ function adv(){const al=alive();if(S.mon.every(m=>m.hp<=0))return win();const i=
  if(i<al.length-1){S.turn=al[i+1];return}
  S.mon.filter(m=>m.hp>0).forEach(m=>{m.ak=(m.ak||0)+1;const a=alive();if(!a.length)return;const u=R(a),p=S.p[u];
   if(roll(p.at.des)>=18){bump(p,'dodge');log(`${p.name} esquivou de ${m.n}!`);return}
-  const raw=m.atk*(.85+Math.random()*.3);let dm=Math.max(raw*MINDMG,raw-p.def*.5);if(p.df)dm*=p.cls==='guerreiro'?.3:.5;if(p.cls==='guerreiro')dm*=.8;const cr=!!(SPR[m.n]&&SPR[m.n].sp)&&Math.random()<MCRIT;if(cr){dm*=2;m.cr=m.ak}dm=Math.max(1,Math.round(dm));p.hp=Math.max(0,p.hp-dm);p.stat.rec+=dm;if(p.hp<=0)bump(p,'deaths');log(`${m.n} acerta ${p.name} (-${dm})${cr?' CRÍTICO!':''}${p.hp<=0?' ☠️':''}`)});
+  const raw=m.atk*(.85+Math.random()*.3);let dm=Math.max(raw*MINDMG,raw-p.def*.5);if(p.df)dm*=p.cls==='guerreiro'?.3:.5;if(p.cls==='guerreiro')dm*=.8;const cr=!!(SPR[m.n]&&SPR[m.n].sp)&&Math.random()<MCRIT;if(cr){dm*=2;m.cr=m.ak}dm=Math.max(1,Math.round(dm));p.hp=Math.max(0,p.hp-dm);p.stat.rec+=dm;if(p.hp<=0){bump(p,'deaths');S.run.dead=S.run.dead||{};S.run.dead[u]=true}log(`${m.n} acerta ${p.name} (-${dm})${cr?' CRÍTICO!':''}${p.hp<=0?' ☠️':''}`)});
  Object.values(S.p).forEach(p=>p.df=false);
  if(!alive().length){S.ph='over';S.run.saved=null;log('O grupo caiu...');return}S.turn=alive()[0]}
 
@@ -111,20 +111,20 @@ function act(k){const u=B().uid,p=S.p[u];if(S.ph!=='combat'||S.turn!==u)return;c
    const cr=Math.random()<.05+(c==='cacador'?.05:0)+p.crit/100+p.at.sor*.005;let dm=(r*.6+b)*(sk&&c==='guerreiro'?2:1)*(M?1.15:1)*(1+.1*bn('guerra'))*(cr?2:1);dm=Math.max(1,Math.round(dm));
    m.hp=Math.max(0,m.hp-dm);p.stat.dmg+=dm;p.stat.max=Math.max(p.stat.max||0,dm);if(cr)p.stat.crit++;log(`${p.name} ${sk?CL[c][5]:'ataca'} ${m.n}: ${dm}${cr?' CRÍTICO!':''}${m.hp<=0?' ☠️':''}`)})}}
  adv();commit()}
-function usePot(k){const p=me();if(!L.pot[k])return;if(POT[k][3]==='hp'&&p.hp<=0){note='Você caiu: poções de cura não funcionam com 0 de HP.';return render()}L.pot[k]--;const o=POT[k];if(o[3]==='hp')p.hp=Math.min(p.mhp,p.hp+o[1]);else p.mp=Math.min(p.mmp,p.mp+o[1]);sv();upd({['p/'+B().uid+'/hp']:p.hp,['p/'+B().uid+'/mp']:p.mp,['p/'+B().uid+'/stat/pots']:((p.stat&&p.stat.pots)||0)+1});render()}
+function usePot(k){const p=me();if(!L.pot[k])return;if(POT[k][3]==='hp'&&p.hp<=0){note='Você morreu: poções de cura não revivem.';return render()}L.pot[k]--;const o=POT[k];if(o[3]==='hp')p.hp=Math.min(p.mhp,p.hp+o[1]);else p.mp=Math.min(p.mmp,p.mp+o[1]);sv();upd({['p/'+B().uid+'/hp']:p.hp,['p/'+B().uid+'/mp']:p.mp,['p/'+B().uid+'/stat/pots']:((p.stat&&p.stat.pots)||0)+1});render()}
 
 /* ---- sala ---- */
 async function enterRoom(name,cls,create){if(busy)return;lerr='';const c=slug(name);if(!c){lerr='Informe o nome da sala.';return render()}busy=true;
  try{const sn=await B().get(B().ref(B().db,'mh/'+c));let s=sn.val();
   if(s&&(now()-s.ts>IDLE||!Object.values(s.p||{}).some(p=>now()-p.hb<STALE*2))){await B().remove(B().ref(B().db,'mh/'+c));clearLocal(c);s=null}
   if(create&&s)throw'Já existe uma sala com esse nome.';if(!create&&!s)throw'Sala não encontrada.';if(!create&&s.ph==='over'&&!(s.p&&s.p[B().uid]))throw'Essa run já terminou.';
-  const u=B().uid;if(s&&!s.p[u]&&Object.values(s.p).filter(q=>now()-q.hb<STALE).length>=4)throw'Sala cheia (máx. 4 jogadores).';
+  const u=B().uid;if(s&&!s.p[u]&&s.run&&s.run.dead&&s.run.dead[u])throw'Você morreu nesta run e não pode voltar a ela.';if(s&&!s.p[u]&&Object.values(s.p).filter(q=>now()-q.hb<STALE).length>=4)throw'Sala cheia (máx. 4 jogadores).';
   const rid=create?u+'_'+now()+'_'+d(99999):s.rid;code=c;L=ld(rid);
   if(create){S={host:u,rid,ts:now(),title:String(name).trim().slice(0,24),floor:0,ph:'market',mon:[],log:[],run:{mon:0,boss:0,gold:0,best:'',bi:-1,roster:{[u]:{n:B().name,c:cls}}},bl:{},p:{[u]:newP(cls)}};enter();await commit()}
   else if(!s.p[u])await B().update(rf(),{['p/'+u]:newP(cls),['run/roster/'+u]:{n:B().name,c:cls}});
   watch()}catch(e){code=null;lerr=typeof e==='string'?e:'Erro: '+(e.code||e.message);render()}finally{busy=false}}
 function watch(){stopLobby();off=B().onValue(rf(),sn=>{S=sn.val();if(!S){leaveRoom('A sala foi fechada.');return}
-  S.mon=S.mon||[];S.log=S.log||[];S.bl=S.bl||{};S.run=S.run||{mon:0,boss:0,gold:0,best:''};S.run.roster=S.run.roster||{};S.p=S.p||{};S.tr=S.tr||{};Object.values(S.tr).forEach(t=>{t.o=t.o||{};t.ok=t.ok||{};t.ap=t.ap||{}});
+  S.mon=S.mon||[];S.log=S.log||[];S.bl=S.bl||{};S.run=S.run||{mon:0,boss:0,gold:0,best:''};S.run.roster=S.run.roster||{};S.run.dead=S.run.dead||{};S.p=S.p||{};S.tr=S.tr||{};Object.values(S.tr).forEach(t=>{t.o=t.o||{};t.ok=t.ok||{};t.ap=t.ap||{}});
   const l=S.loot;if(l&&l.win&&l.win.u===B().uid&&L.got!==l.id){L.got=l.id;if(L.inv.length<20){L.inv.push(l.it);L.found=(L.found||0)+1}sv()}
   if(l&&S.ph==='loot'&&ids()[0]===B().uid)resolveLoot();trade();render()});
  armPresence();hbT=setInterval(tick,15000);tick()}
@@ -305,7 +305,7 @@ function render(){const el=$('mh');if(!el)return;const ae=document.activeElement
  const mons=S.ph==='combat'||gh?`<div class="mhmon">${S.mon.map((m,i)=>`<button class="mhmc ${SPR[m.n]?'hs':''} ${m.hp<=0?'mhdead':''} ${sel===i?'on':''}" data-a="tg" data-v="${i}">${sprHTML(m,i)}<b>${esc(m.n)}</b>${bar(m.hp,m.mhp,'#e5484d')}<small>DEF ${m.df} · ATQ ${m.atk}</small></button>`).join('')}</div>`:'';
  const scene=`<div class="mhsc s-${sk} ${fade?'fade':''}" role="img" aria-label="${SCN[sk]}"><div class="mhsl"><span class="mhpill">Andar ${S.floor} · ${SCN[sk]}${sub}</span>${pill}</div>${mons}</div>`;
  let ac='';
- if(S.ph==='combat')ac=`<div class="card"><h2>⚔️ Ações</h2>${myT?`<div class="mhact"><button data-a="atk">⚔️ Atacar</button><button data-a="df">🛡️ Defender</button><button data-a="sk">${CL[p.cls][5]} (${CL[p.cls][4]} MP)</button></div><p class="sel" style="margin:8px 0 0">Clique em um monstro no cenário para escolher o alvo.</p>`:`<span class="sel">${p.hp<=0?'Você caiu. Aguarde o próximo andar.':'Turno de '+esc((S.p[S.turn]||{}).name||'...')}</span>`}<h2 style="margin-top:14px">Item (ação secundária)</h2><div class="mhact two">${Object.keys(POT).map(k=>`<button class="ghost" data-a="pot" data-v="${k}" ${L.pot[k]&&!(POT[k][3]==='hp'&&p.hp<=0)?'':'disabled'}>${POT[k][0]} ×${L.pot[k]}</button>`).join('')}</div></div>`;
+ if(S.ph==='combat')ac=`<div class="card"><h2>⚔️ Ações</h2>${myT?`<div class="mhact"><button data-a="atk">⚔️ Atacar</button><button data-a="df">🛡️ Defender</button><button data-a="sk">${CL[p.cls][5]} (${CL[p.cls][4]} MP)</button></div><p class="sel" style="margin:8px 0 0">Clique em um monstro no cenário para escolher o alvo.</p>`:`<span class="sel">${p.hp<=0?'Você morreu e não pode voltar nesta run.':'Turno de '+esc((S.p[S.turn]||{}).name||'...')}</span>`}<h2 style="margin-top:14px">Item (ação secundária)</h2><div class="mhact two">${Object.keys(POT).map(k=>`<button class="ghost" data-a="pot" data-v="${k}" ${L.pot[k]&&!(POT[k][3]==='hp'&&p.hp<=0)?'':'disabled'}>${POT[k][0]} ×${L.pot[k]}</button>`).join('')}</div></div>`;
  if(S.ph==='loot'&&S.loot){const v=S.loot.v||{};ac+=`<div class="card"><h2>💎 Loot</h2>${iCard(S.loot.it)}<div class="row">${v[u]?`<span class="sel">Você escolheu: ${v[u]==='want'?'Quero':'Passar'}. Aguardando os outros…</span>`:`<button data-a="vote" data-v="want">Quero</button><button class="ghost" data-a="vote" data-v="pass">Passar</button>`}</div></div>`}
  if(S.ph==='bless')ac+=`<div class="card"><h2>🏆 Chefe derrotado — escolha uma bênção (pode repetir; os níveis se acumulam)</h2><div class="row">${Object.entries(BL).map(([k,b])=>`<button data-a="bless" data-v="${k}">${b[0]}${bn(k)?' · nv '+bn(k):''}<br><small>${b[1]}</small></button>`).join('')}<button class="ghost" data-a="skipb">Pular</button></div></div>`;
  if(S.ph==='market')ac+=`<div class="card"><h2>🏕️ Área segura — mercado</h2><div class="row">${Object.entries(POT).map(([k,o])=>`<button class="ghost" data-a="buy" data-v="${k}">${o[0]} · 💰${o[2]}</button>`).join('')}</div><div class="row"><button data-a="next">Descer ao andar ${S.floor+1} ▶</button></div></div>`;
