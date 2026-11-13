@@ -19,10 +19,10 @@ const ST0=()=>({dmg:0,rec:0,heal:0,crit:0,kills:0,gold:0,spent:0,miss:0,dodge:0,
  PH={combat:'Em combate',market:'No mercado',loot:'Dividindo o loot',bless:'Escolhendo bênção'};
 const IDLE=600000,STALE=90000,need=l=>Math.round(30*Math.pow(l,1.7)),
  ATKG=1.1,/* crescimento do ataque dos monstros por andar */ MINDMG=.3,MCRIT=.15;/* a defesa nunca reduz mais que 70% do dano */
-let code=null,S=null,L=null,off=null,hbT=null,sel=0,tab='inv',note='',lerr='',conOff=null,jT=null,how=false,rooms=null,rerr='',lq='',lname='',ljoin='',lcls='guerreiro',lT=null,on=false,busy=false,tgv=null,gT=null,lastSc='';
+let code=null,S=null,L=null,off=null,hbT=null,sel=0,tab='inv',note='',lerr='',conOff=null,jT=null,how=false,rooms=null,rerr='',lq='',lname='',ljoin='',lcls='guerreiro',lT=null,on=false,rk=null,rkerr='',rname='',rbusy=false,busy=false,tgv=null,gT=null,lastSc='';
 const bn=k=>(S&&S.bl&&+S.bl[k])||0,hm=()=>1+.15*bn('vida');/* nível de cada bênção (acumulativa) e multiplicador de HP */
 
-const rf=p=>B().ref(B().db,'mh/'+code+(p?'/'+p:'')),upd=o=>B().update(rf(),o),commit=()=>{S.ts=now();return B().set(rf(),S)};
+const RKN=20,rf=p=>B().ref(B().db,'mh/'+code+(p?'/'+p:'')),upd=o=>B().update(rf(),o),commit=()=>{S.ts=now();return B().set(rf(),S)};
 const me=()=>S&&S.p[B().uid],ids=()=>Object.keys(S.p).filter(u=>now()-S.p[u].hb<STALE).sort(),alive=()=>ids().filter(u=>S.p[u].hp>0);
 const K=c=>`mh:${c||code}:${B().uid}`;
 const ld=rid=>{try{const x=JSON.parse(localStorage.getItem(K()));if(x&&x.rid===rid)return x}catch(e){}return{rid,inv:[],eq:{arma:null,escudo:null,acc:[]},pot:{pp:2,pm:0,pg:0,fm:1}}};
@@ -97,7 +97,7 @@ function adv(){const al=alive();if(S.mon.every(m=>m.hp<=0))return win();const i=
   if(roll(p.at.des)>=18){bump(p,'dodge');log(`${p.name} esquivou de ${m.n}!`);return}
   const raw=m.atk*(.85+Math.random()*.3);let dm=Math.max(raw*MINDMG,raw-p.def*.5);if(p.df)dm*=p.cls==='guerreiro'?.3:.5;if(p.cls==='guerreiro')dm*=.8;const cr=!!(SPR[m.n]&&SPR[m.n].sp)&&Math.random()<MCRIT;if(cr){dm*=2;m.cr=m.ak}dm=Math.max(1,Math.round(dm));p.hp=Math.max(0,p.hp-dm);p.stat.rec+=dm;if(p.hp<=0)bump(p,'deaths');log(`${m.n} acerta ${p.name} (-${dm})${cr?' CRÍTICO!':''}${p.hp<=0?' ☠️':''}`)});
  Object.values(S.p).forEach(p=>p.df=false);
- if(!alive().length){S.ph='over';log('O grupo caiu...');return}S.turn=alive()[0]}
+ if(!alive().length){S.ph='over';S.run.saved=null;log('O grupo caiu...');return}S.turn=alive()[0]}
 
 /* ---- ações do jogador ---- */
 function act(k){const u=B().uid,p=S.p[u];if(S.ph!=='combat'||S.turn!==u)return;const c=p.cls,M=c==='mago',sk=k==='sk',tg=S.mon[sel]&&S.mon[sel].hp>0?S.mon[sel]:S.mon.find(m=>m.hp>0);
@@ -105,13 +105,13 @@ function act(k){const u=B().uid,p=S.p[u];if(S.ph!=='combat'||S.turn!==u)return;c
  if(k==='df'){p.df=true;log(`${p.name} se defende.`)}
  else if(sk){p.mp-=CL[c][4];bump(p,'sk')}
  if(k!=='df'){
-  if(sk&&c==='clerigo'){const a=alive().map(x=>S.p[x]).sort((x,y)=>x.hp/x.mhp-y.hp/y.mhp)[0],h=Math.round((roll(p.at.fe)+p.lv*2+10)*1.1);a.hp=Math.min(a.mhp,a.hp+h);p.stat.heal+=h;log(`${p.name} cura ${a.name} (+${h}).`)}
+  if(sk&&c==='clerigo'){const a=alive().map(x=>S.p[x]).filter(x=>x.hp>0).sort((x,y)=>x.hp/x.mhp-y.hp/y.mhp)[0],h=Math.round((roll(p.at.fe)+p.lv*2+10)*1.1);a.hp=Math.min(a.mhp,a.hp+h);p.stat.heal+=h;log(`${p.name} cura ${a.name} (+${h}).`)}
   else{(sk&&M?S.mon.filter(m=>m.hp>0):[tg]).forEach(m=>{const r=roll(M?p.at.int:p.at.for),b=(M?p.mag:p.atk)+p.lv+(c==='cacador'?p.at.for*3:0),df=sk&&c==='cacador'?m.df*.5:m.df;
    if(r!==20&&r+b<=df){bump(p,'miss');return log(`${p.name} erra ${m.n} (${r})`)}
    const cr=Math.random()<.05+(c==='cacador'?.05:0)+p.crit/100+p.at.sor*.005;let dm=(r*.6+b)*(sk&&c==='guerreiro'?2:1)*(M?1.15:1)*(1+.1*bn('guerra'))*(cr?2:1);dm=Math.max(1,Math.round(dm));
    m.hp=Math.max(0,m.hp-dm);p.stat.dmg+=dm;p.stat.max=Math.max(p.stat.max||0,dm);if(cr)p.stat.crit++;log(`${p.name} ${sk?CL[c][5]:'ataca'} ${m.n}: ${dm}${cr?' CRÍTICO!':''}${m.hp<=0?' ☠️':''}`)})}}
  adv();commit()}
-function usePot(k){const p=me();if(!L.pot[k])return;L.pot[k]--;const o=POT[k];if(o[3]==='hp')p.hp=Math.min(p.mhp,p.hp+o[1]);else p.mp=Math.min(p.mmp,p.mp+o[1]);sv();upd({['p/'+B().uid+'/hp']:p.hp,['p/'+B().uid+'/mp']:p.mp,['p/'+B().uid+'/stat/pots']:((p.stat&&p.stat.pots)||0)+1});render()}
+function usePot(k){const p=me();if(!L.pot[k])return;if(POT[k][3]==='hp'&&p.hp<=0){note='Você caiu: poções de cura não funcionam com 0 de HP.';return render()}L.pot[k]--;const o=POT[k];if(o[3]==='hp')p.hp=Math.min(p.mhp,p.hp+o[1]);else p.mp=Math.min(p.mmp,p.mp+o[1]);sv();upd({['p/'+B().uid+'/hp']:p.hp,['p/'+B().uid+'/mp']:p.mp,['p/'+B().uid+'/stat/pots']:((p.stat&&p.stat.pots)||0)+1});render()}
 
 /* ---- sala ---- */
 async function enterRoom(name,cls,create){if(busy)return;lerr='';const c=slug(name);if(!c){lerr='Informe o nome da sala.';return render()}busy=true;
@@ -120,11 +120,11 @@ async function enterRoom(name,cls,create){if(busy)return;lerr='';const c=slug(na
   if(create&&s)throw'Já existe uma sala com esse nome.';if(!create&&!s)throw'Sala não encontrada.';if(!create&&s.ph==='over'&&!(s.p&&s.p[B().uid]))throw'Essa run já terminou.';
   const u=B().uid;if(s&&!s.p[u]&&Object.values(s.p).filter(q=>now()-q.hb<STALE).length>=4)throw'Sala cheia (máx. 4 jogadores).';
   const rid=create?u+'_'+now()+'_'+d(99999):s.rid;code=c;L=ld(rid);
-  if(create){S={host:u,rid,ts:now(),title:String(name).trim().slice(0,24),floor:0,ph:'market',mon:[],log:[],run:{mon:0,boss:0,gold:0,best:'',bi:-1},bl:{},p:{[u]:newP(cls)}};enter();await commit()}
-  else if(!s.p[u])await B().update(rf(),{['p/'+u]:newP(cls)});
+  if(create){S={host:u,rid,ts:now(),title:String(name).trim().slice(0,24),floor:0,ph:'market',mon:[],log:[],run:{mon:0,boss:0,gold:0,best:'',bi:-1,roster:{[u]:{n:B().name,c:cls}}},bl:{},p:{[u]:newP(cls)}};enter();await commit()}
+  else if(!s.p[u])await B().update(rf(),{['p/'+u]:newP(cls),['run/roster/'+u]:{n:B().name,c:cls}});
   watch()}catch(e){code=null;lerr=typeof e==='string'?e:'Erro: '+(e.code||e.message);render()}finally{busy=false}}
 function watch(){stopLobby();off=B().onValue(rf(),sn=>{S=sn.val();if(!S){leaveRoom('A sala foi fechada.');return}
-  S.mon=S.mon||[];S.log=S.log||[];S.bl=S.bl||{};S.run=S.run||{mon:0,boss:0,gold:0,best:''};S.p=S.p||{};S.tr=S.tr||{};Object.values(S.tr).forEach(t=>{t.o=t.o||{};t.ok=t.ok||{};t.ap=t.ap||{}});
+  S.mon=S.mon||[];S.log=S.log||[];S.bl=S.bl||{};S.run=S.run||{mon:0,boss:0,gold:0,best:''};S.run.roster=S.run.roster||{};S.p=S.p||{};S.tr=S.tr||{};Object.values(S.tr).forEach(t=>{t.o=t.o||{};t.ok=t.ok||{};t.ap=t.ap||{}});
   const l=S.loot;if(l&&l.win&&l.win.u===B().uid&&L.got!==l.id){L.got=l.id;if(L.inv.length<20){L.inv.push(l.it);L.found=(L.found||0)+1}sv()}
   if(l&&S.ph==='loot'&&ids()[0]===B().uid)resolveLoot();trade();render()});
  armPresence();hbT=setInterval(tick,15000);tick()}
@@ -146,16 +146,48 @@ async function leaveRoom(msg){const c=code,u=B().uid,gone=typeof msg==='string';
   const p=(await B().get(B().ref(B().db,`mh/${c}/p`))).val()||{};
   if(!Object.values(p).some(q=>q&&now()-q.hb<STALE*2)){await B().remove(B().ref(B().db,'mh/'+c));clearLocal(c)}}catch(e){}}
  if(gone&&c)clearLocal(c);
- code=null;S=null;lerr=gone?msg:'';render();startLobby()}
+ code=null;S=null;rname='';lerr=gone?msg:'';render();startLobby();loadRank()}
+
+
+/* ---- ranking global: top 20 grupos pela maior sala (andar) alcançada ----
+   Firebase: mhrank/<rid> = {name,floor,ts,m:[{n,c,l}]}  (uma entrada por run; a chave é o rid da sala) */
+const rkSort=a=>a.sort((x,y)=>y.floor-x.floor||x.ts-y.ts);
+async function loadRank(){try{const v=(await B().get(B().ref(B().db,'mhrank'))).val()||{};
+  rk=rkSort(Object.entries(v).filter(([k,e])=>e&&e.floor).map(([k,e])=>({id:k,name:String(e.name||'Grupo'),floor:+e.floor,ts:+e.ts||0,m:Object.values(e.m||{})}))).slice(0,RKN);rkerr=''}
+  catch(e){rk=rk||[];rkerr='Não foi possível carregar o ranking. Confira as regras do Firebase (nó "mhrank").'}
+  drawRank()}
+function rkRows(){return rk.map((e,i)=>`<div class="rkr ${i<3?'top':''}"><span class="rkp">${['🥇','🥈','🥉'][i]||(i+1)+'º'}</span><span class="rkn"><b>${esc(e.name)}</b><small>${e.m.map(q=>(CL[q.c]?CL[q.c][1]+' ':'')+esc(q.n)+(q.l?' (Nv '+q.l+')':'')).join(' · ')}</small></span><span class="rkf">Sala ${e.floor}</span></div>`).join('')}
+function drawRank(){const box=$('mhrank');if(!box)return;
+  box.innerHTML=(rkerr&&!(S&&S.ph==='over')?`<p class="err" role="alert">${esc(rkerr)}</p>`:'')+(rk===null?'<p class="empty">Carregando ranking…</p>':rk.length?rkRows():'<p class="empty">Ainda não há grupos no ranking. Seja o primeiro!</p>')}
+async function saveRank(){if(rbusy||!S||S.ph!=='over'||S.run.saved)return;const nm=rname.trim().slice(0,24);
+  if(!nm){rkerr='Dê um nome ao grupo.';return render()}
+  rbusy=true;rkerr='';render();
+  try{const rid=S.rid,ref=B().ref(B().db,'mhrank/'+rid);
+   if((await B().get(ref)).exists()){await upd({'run/saved':nm});throw'ok'}
+   const all=(await B().get(B().ref(B().db,'mhrank'))).val()||{},list=rkSort(Object.entries(all).filter(([k,e])=>e&&e.floor).map(([k,e])=>({id:k,floor:+e.floor,ts:+e.ts||0})));
+   if(list.length>=RKN&&S.floor<=list[RKN-1].floor){await upd({'run/saved':'-'});throw'out'}
+   const ro=S.run.roster||{},m=[];
+   Object.entries(ro).forEach(([u,q])=>{const c=S.p[u];m.push({n:String((c&&c.name)||q.n||'?').slice(0,24),c:(c&&c.cls)||q.c||'guerreiro',l:c?c.lv:0})});
+   Object.entries(S.p).forEach(([u,c])=>{if(!ro[u])m.push({n:String(c.name).slice(0,24),c:c.cls,l:c.lv})});
+   const t=now();await B().set(ref,{name:nm,floor:S.floor,ts:t,m});
+   await upd({'run/saved':nm});
+   const full=rkSort(list.concat([{id:rid,floor:S.floor,ts:t}]));
+   await Promise.all(full.slice(RKN).map(e=>B().remove(B().ref(B().db,'mhrank/'+e.id))))}
+  catch(e){if(e!=='ok'&&e!=='out')rkerr='Erro ao salvar: '+(e.code||e.message||e)}
+  rbusy=false;await loadRank();if(S)render()}
+const overRank=()=>{const sv=S.run.saved;
+  if(sv==='-')return`<div class="card"><h2>🏆 Ranking</h2><p class="sel">Seu grupo (Sala ${S.floor}) não alcançou uma sala alta o bastante para entrar no top ${RKN}.</p></div>`;
+  if(sv)return`<div class="card"><h2>🏆 Ranking</h2><p class="sel">Grupo <b>${esc(sv)}</b> salvo no ranking (Sala ${S.floor}).</p></div>`;
+  return`<div class="card"><h2>🏆 Salvar no ranking</h2><p class="sel" style="margin:0 0 8px">Todos caíram na sala ${S.floor}. Dê um nome ao grupo para registrá-lo (todos os integrantes aparecem).</p><label for="mhrk">Nome do grupo</label><input type="text" id="mhrk" maxlength="24" placeholder="Os Valentes" value="${esc(rname)}"><p class="err" role="alert" style="margin:8px 0 0">${esc(rkerr)}</p><div class="row"><button data-a="rsave" ${rbusy?'disabled':''}>${rbusy?'Salvando…':'Salvar no ranking'}</button></div></div>`};
 
 /* ---- ações de UI ---- */
 const A={
  create:()=>enterRoom($('mhn').value,lcls,true),
  join:()=>enterRoom($('mhj').value,lcls,false),jr:v=>enterRoom(v,lcls,false),rf:()=>loadRooms(),how:()=>{how=!how;render()},
- leave:()=>leaveRoom(),atk:()=>act('atk'),sk:()=>act('sk'),df:()=>act('df'),tg:v=>{sel=+v;render()},tab:v=>{tab=v;note='';tgv=null;render()},pot:usePot,
+ leave:()=>leaveRoom(),rsave:saveRank,rrf:loadRank,atk:()=>act('atk'),sk:()=>act('sk'),df:()=>act('df'),tg:v=>{sel=+v;render()},tab:v=>{tab=v;note='';tgv=null;render()},pot:usePot,
  vote:v=>upd({['loot/v/'+B().uid]:v}),
  bless:k=>{if(S.ph!=='bless'||!BL[k])return;const n=bn(k),f=(1+.15*(n+1))/(1+.15*n);S.bl[k]=n+1;
-  if(k==='vida')Object.values(S.p).forEach(p=>{const m=Math.round(p.mhp*f);p.hp+=m-p.mhp;p.mhp=m});
+  if(k==='vida')Object.values(S.p).forEach(p=>{const m=Math.round(p.mhp*f);if(p.hp>0)p.hp+=m-p.mhp;p.mhp=m});
   log(`Bênção escolhida: ${BL[k][0]} (nível ${n+1}).`);S.ph='market';commit()},
 skipb:()=>{if(S.ph!=='bless')return;log('O grupo seguiu sem escolher bênção.');S.ph='market';commit()},
  buy:k=>{const p=me(),o=POT[k];if(p.gold<o[2]){note='Ouro insuficiente.';return render()}note='';L.pot[k]++;sv();upd({['p/'+B().uid+'/gold']:p.gold-o[2],['p/'+B().uid+'/stat/spent']:((p.stat&&p.stat.spent)||0)+o[2]})},
@@ -181,7 +213,7 @@ skipb:()=>{if(S.ph!=='bless')return;log('O grupo seguiu sem escolher bênção.'
   if(L.inv.length-a.i.length+b.i.length>20){note='Sua mochila não comporta os itens que você receberia (máx. 20).';return render()}
   note='';upd({[`tr/${t.id}/ok/${u}`]:sg(t)})},
  tun:()=>{const t=myTr();if(t)upd({[`tr/${t.id}/ok/${B().uid}`]:null})},
- pt:k=>{const p=me();if(p.pts<1)return;const u='p/'+B().uid+'/',o={[u+'pts']:p.pts-1,[u+'at/'+k]:p.at[k]+1};if(k==='vit'){const v=Math.round(10*hm());o[u+'mhp']=p.mhp+v;o[u+'hp']=p.hp+v}upd(o)}};
+ pt:k=>{const p=me();if(p.pts<1)return;const u='p/'+B().uid+'/',o={[u+'pts']:p.pts-1,[u+'at/'+k]:p.at[k]+1};if(k==='vit'){const v=Math.round(10*hm());o[u+'mhp']=p.mhp+v;if(p.hp>0)o[u+'hp']=p.hp+v}upd(o)}};
 
 /* ---- lista de salas (lobby) ---- */
 const stopLobby=()=>{clearInterval(lT);lT=null},
@@ -251,7 +283,7 @@ function sprSync(){const t=now();if(mfl!==S.floor){mst={};mfl=S.floor;gUntil=0}
 const sprHTML=(m,i)=>{const r=SPR[m.n]&&mst[i];if(!r)return'';return`<span class="mhspr sp${SPK.indexOf(m.n)} a-${r.cur.s}" style="animation-delay:-${Math.max(0,Math.round(now()-r.cur.t))}ms"></span>`};
 /* qual cenário mostrar: bênção e mercado têm cenário próprio; o resto segue o tipo da sala (comum, elite ou chefe) */
 const sceneKey=()=>S.ph==='bless'?'bless':S.ph==='market'?'market':S.rt==='boss'?'boss':S.rt==='elite'?'elite':'combat';
-function render(){const el=$('mh');if(!el)return;const ae=document.activeElement,keep=ae&&ae.id==='mhtg'?ae.selectionStart:null;
+function render(){const el=$('mh');if(!el)return;const ae=document.activeElement,kid=ae&&ae.id,keep=ae&&(ae.id==='mhtg'||ae.id==='mhrk')?ae.selectionStart:null;
  if(!code||!S){el.classList.remove('mhgame');lastSc='';el.innerHTML=`<h1>⚔️ Monster Hunter</h1><p>Dungeon infinita cooperativa. Crie uma sala ou entre em uma. Até 4 jogadores.</p>
 <div class="card"><h2>Seu caçador</h2><div class="mhcl">${Object.entries(CL).map(([k,c])=>`<label><input type="radio" name="mhc" value="${k}" ${k===lcls?'checked':''}><span>${c[1]} ${c[0]}</span></label>`).join('')}</div></div>
 <div class="cols"><div class="card"><h2>Criar sala</h2><label for="mhn">Nome da sala</label><input type="text" id="mhn" maxlength="24" placeholder="catacumbas" value="${esc(lname)}"><div class="row"><button data-a="create">Criar sala</button></div></div>
@@ -261,7 +293,8 @@ function render(){const el=$('mh');if(!el)return;const ae=document.activeElement
 <input type="text" id="mhq" maxlength="24" placeholder="Buscar sala ou jogador" value="${esc(lq)}" style="margin-top:12px">
 <p class="err" id="mhre" role="alert" style="margin:8px 0 0"></p><div class="rooms" id="mhrooms"></div>
 <div class="legend"><span><i class="dot g"></i>Menos da metade</span><span><i class="dot y"></i>Metade ou mais</span><span><i class="dot r"></i>Cheia</span></div>
-<p class="empty" style="font-size:.8rem;margin:8px 0 0">Salas vazias ou sem ação por 10 minutos são encerradas.</p></div>`;drawRooms();return}
+<p class="empty" style="font-size:.8rem;margin:8px 0 0">Salas vazias ou sem ação por 10 minutos são encerradas.</p></div>
+<div class="card"><div class="bar"><h2 style="margin:0">🏆 Ranking — Top ${RKN} grupos</h2><button class="ghost" data-a="rrf">Atualizar</button></div><p class="sel" style="margin:6px 0 12px">Maior sala alcançada. O 1º lugar é o grupo que chegou mais longe.</p><div id="mhrank"></div></div>`;drawRooms();drawRank();return}
  const u=B().uid,p=me();if(!p)return;const myT=S.ph==='combat'&&S.turn===u&&p.hp>0;
  el.classList.add('mhgame');
  sprSync();const gh=S.ph!=='combat'&&gUntil>now()&&S.mon&&S.mon.length>0;let sk=sceneKey();if(S.ph==='combat')combatSk=sk;else if(gh)sk=combatSk;const fade=sk!==lastSc;lastSc=sk;
@@ -272,12 +305,12 @@ function render(){const el=$('mh');if(!el)return;const ae=document.activeElement
  const mons=S.ph==='combat'||gh?`<div class="mhmon">${S.mon.map((m,i)=>`<button class="mhmc ${SPR[m.n]?'hs':''} ${m.hp<=0?'mhdead':''} ${sel===i?'on':''}" data-a="tg" data-v="${i}">${sprHTML(m,i)}<b>${esc(m.n)}</b>${bar(m.hp,m.mhp,'#e5484d')}<small>DEF ${m.df} · ATQ ${m.atk}</small></button>`).join('')}</div>`:'';
  const scene=`<div class="mhsc s-${sk} ${fade?'fade':''}" role="img" aria-label="${SCN[sk]}"><div class="mhsl"><span class="mhpill">Andar ${S.floor} · ${SCN[sk]}${sub}</span>${pill}</div>${mons}</div>`;
  let ac='';
- if(S.ph==='combat')ac=`<div class="card"><h2>⚔️ Ações</h2>${myT?`<div class="mhact"><button data-a="atk">⚔️ Atacar</button><button data-a="df">🛡️ Defender</button><button data-a="sk">${CL[p.cls][5]} (${CL[p.cls][4]} MP)</button></div><p class="sel" style="margin:8px 0 0">Clique em um monstro no cenário para escolher o alvo.</p>`:`<span class="sel">${p.hp<=0?'Você caiu. Aguarde o próximo andar.':'Turno de '+esc((S.p[S.turn]||{}).name||'...')}</span>`}<h2 style="margin-top:14px">Item (ação secundária)</h2><div class="mhact two">${Object.keys(POT).map(k=>`<button class="ghost" data-a="pot" data-v="${k}" ${L.pot[k]?'':'disabled'}>${POT[k][0]} ×${L.pot[k]}</button>`).join('')}</div></div>`;
+ if(S.ph==='combat')ac=`<div class="card"><h2>⚔️ Ações</h2>${myT?`<div class="mhact"><button data-a="atk">⚔️ Atacar</button><button data-a="df">🛡️ Defender</button><button data-a="sk">${CL[p.cls][5]} (${CL[p.cls][4]} MP)</button></div><p class="sel" style="margin:8px 0 0">Clique em um monstro no cenário para escolher o alvo.</p>`:`<span class="sel">${p.hp<=0?'Você caiu. Aguarde o próximo andar.':'Turno de '+esc((S.p[S.turn]||{}).name||'...')}</span>`}<h2 style="margin-top:14px">Item (ação secundária)</h2><div class="mhact two">${Object.keys(POT).map(k=>`<button class="ghost" data-a="pot" data-v="${k}" ${L.pot[k]&&!(POT[k][3]==='hp'&&p.hp<=0)?'':'disabled'}>${POT[k][0]} ×${L.pot[k]}</button>`).join('')}</div></div>`;
  if(S.ph==='loot'&&S.loot){const v=S.loot.v||{};ac+=`<div class="card"><h2>💎 Loot</h2>${iCard(S.loot.it)}<div class="row">${v[u]?`<span class="sel">Você escolheu: ${v[u]==='want'?'Quero':'Passar'}. Aguardando os outros…</span>`:`<button data-a="vote" data-v="want">Quero</button><button class="ghost" data-a="vote" data-v="pass">Passar</button>`}</div></div>`}
  if(S.ph==='bless')ac+=`<div class="card"><h2>🏆 Chefe derrotado — escolha uma bênção (pode repetir; os níveis se acumulam)</h2><div class="row">${Object.entries(BL).map(([k,b])=>`<button data-a="bless" data-v="${k}">${b[0]}${bn(k)?' · nv '+bn(k):''}<br><small>${b[1]}</small></button>`).join('')}<button class="ghost" data-a="skipb">Pular</button></div></div>`;
  if(S.ph==='market')ac+=`<div class="card"><h2>🏕️ Área segura — mercado</h2><div class="row">${Object.entries(POT).map(([k,o])=>`<button class="ghost" data-a="buy" data-v="${k}">${o[0]} · 💰${o[2]}</button>`).join('')}</div><div class="row"><button data-a="next">Descer ao andar ${S.floor+1} ▶</button></div></div>`;
  if(S.ph==='over'){const t=Object.values(S.p).reduce((a,q)=>{for(const k in q.stat)a[k]=(a[k]||0)+q.stat[k];return a},{});
-  ac+=`<div class="card"><h2>☠️ Fim da run — Andar ${S.floor}</h2><p>Dano causado: ${t.dmg} · Dano recebido: ${t.rec} · Cura: ${t.heal} · Críticos: ${t.crit}<br>Monstros: ${S.run.mon} · Chefes: ${S.run.boss} · Ouro obtido: ${S.run.gold}<br>Melhor item: ${esc(S.run.best||'—')}</p><button data-a="leave">Voltar</button></div>`}
+  ac+=`<div class="card"><h2>☠️ Fim da run — Andar ${S.floor}</h2><p>Dano causado: ${t.dmg} · Dano recebido: ${t.rec} · Cura: ${t.heal} · Críticos: ${t.crit}<br>Monstros: ${S.run.mon} · Chefes: ${S.run.boss} · Ouro obtido: ${S.run.gold}<br>Melhor item: ${esc(S.run.best||'—')}</p><button data-a="leave">Voltar</button></div>`+overRank()+`<div class="card"><h2>🏆 Top ${RKN}</h2><div id="mhrank"></div></div>`}
  let invb='';{const iv=trs().find(t=>t.st!=='done'&&t.b===u&&!t.acc);if(iv&&tab!=='tr'&&S.p[iv.a])invb=`<div class="card mhturn"><b>🤝 ${esc(S.p[iv.a].name)} quer trocar com você</b><div class="row"><button data-a="tab" data-v="tr">Ver convite</button><button class="ghost" data-a="tcan">Recusar</button></div></div>`}
  const nb=note?`<p class="err" style="margin:0 0 12px">${esc(note)}</p>`:'';
  let h='';
@@ -288,7 +321,7 @@ function render(){const el=$('mh');if(!el)return;const ae=document.activeElement
  else if(tab==='tr')h+=tradeHTML();
  else h+=`<div class="row" style="margin:0 0 12px"><button class="ghost ${how?'on':''}" data-a="how" aria-expanded="${how}">Como Funciona</button></div>${how?howHTML():''}<div class="mhg">${Object.entries(AT).map(([k,n])=>`<div class="mhi"><b>${n}: ${p.at[k]}</b><div style="margin-top:6px"><button ${p.pts?'':'disabled'} data-a="pt" data-v="${k}">+1</button></div></div>`).join('')}</div>`;
  h+='</div>';
- el.innerHTML=`<div class="bar mhtop"><div><h1>Andar ${S.floor} <small>· sala ${esc(S.title||code)}</small></h1></div><button class="ghost" data-a="leave">Sair da sala</button></div>${nb}<div class="mhgrid"><aside class="mhL">${invb}${party}${bls}</aside><section class="mhC">${scene}<div class="card"><h2>Registro</h2>${S.log.slice().reverse().map(l=>`<div class="sel">${esc(l)}</div>`).join('')}</div></section><aside class="mhR">${ac}</aside><div class="mhT">${h}</div></div>`;if(keep!==null){const x=$('mhtg');if(x){x.focus();try{x.setSelectionRange(keep,keep)}catch(e){}}}}
+ el.innerHTML=`<div class="bar mhtop"><div><h1>Andar ${S.floor} <small>· sala ${esc(S.title||code)}</small></h1></div><button class="ghost" data-a="leave">Sair da sala</button></div>${nb}<div class="mhgrid"><aside class="mhL">${invb}${party}${bls}</aside><section class="mhC">${scene}<div class="card"><h2>Registro</h2>${S.log.slice().reverse().map(l=>`<div class="sel">${esc(l)}</div>`).join('')}</div></section><aside class="mhR">${ac}</aside><div class="mhT">${h}</div></div>`;if(keep!==null){const x=$(kid);if(x){x.focus();try{x.setSelectionRange(keep,keep)}catch(e){}}}drawRank()}
 
 const st=document.createElement('style');st.textContent=`.modes{display:flex;gap:6px}.modes button{background:none;color:var(--mut);padding:8px 12px}.modes button.on{background:var(--bg);color:var(--ink)}
 .pickg{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:640px){.pickg{grid-template-columns:1fr}}.pickg button{padding:28px 16px;font-size:1.15rem;background:var(--card);color:var(--ink);border:1px solid var(--line)}.pickg button:hover{border-color:var(--acc)}
@@ -322,11 +355,11 @@ st2.textContent=`#mh.mhgame{max-width:none;width:min(1480px,100vw - 32px);positi
 .mhR .row{flex-direction:column;align-items:stretch}.mhR .row button{width:100%}
 @media(max-width:1100px){.mhgrid{grid-template-columns:1fr 1fr}.mhC{grid-column:1/-1;order:-1}}
 @media(max-width:640px){.mhgrid{grid-template-columns:1fr}.mhC{display:contents}.mhsc{order:-3}.mhR{order:-2}.mhC>.card{order:1}.mhT{order:2}.mhmon{left:6px;right:6px;bottom:6px;gap:6px}.mhmc{min-width:90px;padding:4px 8px}.mhmc small{display:none}.mhpill{font-size:.72rem;padding:3px 9px}}`+Object.entries(BG).map(([k,v])=>`.mhsc.s-${k}::before{background-image:url(${v})}`).join('')+`@media(max-width:640px){#mh.mhgame{width:100%;left:auto;transform:none}.mhtop h1{font-size:1.1rem}.mhsc{aspect-ratio:4/3}.mhsl{top:6px;left:6px;right:6px}.mhpill{max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mhmon{flex-wrap:nowrap}.mhmc{flex:1 1 0;min-width:0;max-width:none;padding:4px 6px}.mhmc b{font-size:.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mhspr{transform:translateX(-50%) scale(.6)!important;transform-origin:50% 100%}.mhb{height:12px}.mhb span{font-size:.62rem;line-height:12px}.mhp{grid-template-columns:1fr 1fr}.mhm,.mhg{grid-template-columns:1fr}.mhR .card,.mhL .card,.mhC .card{padding:12px}.mhact button{padding:11px}.mhtb{font-size:.8rem;min-width:380px}#mh{overflow-x:hidden}}`+SPCSS;
-document.head.appendChild(st2);
+st2.textContent+=`.rkr{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center;padding:9px 4px;border-top:1px solid var(--line)}.rkr:first-child{border-top:0}.rkr.top .rkn b{color:#e0a91c}.rkp{font-weight:700;text-align:center;color:var(--mut)}.rkn b{display:block}.rkn small{display:block;color:var(--mut);font-size:.8rem;overflow-wrap:anywhere}.rkf{font-weight:700;white-space:nowrap}`;document.head.appendChild(st2);
 
 window.MH={open(){on=true;sweep();janitor();clearInterval(jT);jT=setInterval(janitor,60000);const el=$('mh');if(el&&!el._b){el._b=1;el.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a])A[b.dataset.a](b.dataset.v)});
- el.addEventListener('input',e=>{const x=e.target;if(x.id==='mhn')lname=x.value;else if(x.id==='mhj')ljoin=x.value;else if(x.id==='mhq'){lq=x.value;drawRooms()}else if(x.id==='mhtg'){tgv=x.value.replace(/\D/g,'');clearTimeout(gT);gT=setTimeout(()=>A.tgold(tgv),700)}});
+ el.addEventListener('input',e=>{const x=e.target;if(x.id==='mhn')lname=x.value;else if(x.id==='mhj')ljoin=x.value;else if(x.id==='mhq'){lq=x.value;drawRooms()}else if(x.id==='mhrk')rname=x.value;else if(x.id==='mhtg'){tgv=x.value.replace(/\D/g,'');clearTimeout(gT);gT=setTimeout(()=>A.tgold(tgv),700)}});
  el.addEventListener('change',e=>{if(e.target.name==='mhc')lcls=e.target.value;else if(e.target.id==='mhtg')A.tgold(e.target.value.replace(/\D/g,''))});
- el.addEventListener('keydown',e=>{if(e.key==='Enter'){if(e.target.id==='mhn')A.create();else if(e.target.id==='mhj')A.join()}})}
- render();if(!code)startLobby()},close(){on=false;stopLobby();clearInterval(jT);jT=null;if(code)leaveRoom()}};
+ el.addEventListener('keydown',e=>{if(e.key==='Enter'){if(e.target.id==='mhn')A.create();else if(e.target.id==='mhj')A.join();else if(e.target.id==='mhrk')A.rsave()}})}
+ loadRank();render();if(!code)startLobby()},close(){on=false;stopLobby();clearInterval(jT);jT=null;if(code)leaveRoom()}};
 })();
